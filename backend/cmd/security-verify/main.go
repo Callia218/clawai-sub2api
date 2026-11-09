@@ -42,13 +42,13 @@ func main() {
 	assert(strings.Contains(dsn, "dbname=sub2api_security_test"), "dedicated database is required")
 	db, err := sql.Open("postgres", dsn)
 	check(err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	db.SetMaxOpenConns(24)
 	check(db.PingContext(ctx))
 	check(repository.ApplyMigrations(ctx, db))
 	client := dbent.NewClient(dbent.Driver(entsql.OpenDB(dialect.Postgres, db)))
 	rdb := redis.NewClient(&redis.Options{Addr: os.Getenv("SECURITY_TEST_REDIS"), MaxRetries: -1})
-	defer rdb.Close()
+	defer func() { _ = rdb.Close() }()
 	check(rdb.Ping(ctx).Err())
 	cfg := &config.Config{JWT: config.JWTConfig{Secret: "isolated-test-signing-key", ExpireHour: 1, RefreshTokenExpireDays: 1, RequireIssuedToken: true}}
 	cfg.Billing.InflightReservation = config.InflightReservationConfig{Enabled: true, TTLSeconds: 3, FailClosedOnUnpriced: true}

@@ -149,16 +149,17 @@ func IsEncryptedConfig(stored string) bool {
 // makes the derivation stable across Go versions.
 func hkdfSHA256(secret, salt []byte, info string, length int) []byte {
 	mac := hmac.New(sha256.New, salt)
-	mac.Write(secret)
+	// hash.Hash.Write always returns the full length and a nil error.
+	_, _ = mac.Write(secret)
 	prk := mac.Sum(nil)
 
 	out := make([]byte, 0, length)
 	var block []byte
 	for counter := byte(1); len(out) < length; counter++ {
 		mac = hmac.New(sha256.New, prk)
-		mac.Write(block)
-		mac.Write([]byte(info))
-		mac.Write([]byte{counter})
+		_, _ = mac.Write(block)
+		_, _ = mac.Write([]byte(info))
+		_, _ = mac.Write([]byte{counter})
 		block = mac.Sum(nil)
 		out = append(out, block...)
 	}
@@ -280,4 +281,3 @@ func ParseStoredConfig(stored string, master []byte) (map[string]string, error) 
 
 	return nil, fmt.Errorf("unrecognized payment provider config format (len=%d)", len(stored))
 }
-

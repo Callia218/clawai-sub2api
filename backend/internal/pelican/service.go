@@ -408,7 +408,7 @@ func (s *Service) runOne(ctx context.Context, db *sql.DB, cfg Config, g GroupCon
 	if err != nil {
 		item.Error = "读取 API Key 失败"
 		item.DurationMs = int(time.Since(start).Milliseconds())
-		s.insertResult(ctx, db, g, "error", "", item.Error, item.DurationMs, 0, 0)
+		_ = s.insertResult(ctx, db, g, "error", "", item.Error, item.DurationMs, 0, 0)
 		return item
 	}
 
@@ -442,7 +442,7 @@ func (s *Service) runOne(ctx context.Context, db *sql.DB, cfg Config, g GroupCon
 	item.DurationMs = int(time.Since(start).Milliseconds())
 	if err != nil {
 		item.Error = "调用网关失败: " + err.Error()
-		s.insertResult(ctx, db, g, "error", "", item.Error, item.DurationMs, 0, 0)
+		_ = s.insertResult(ctx, db, g, "error", "", item.Error, item.DurationMs, 0, 0)
 		return item
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -450,7 +450,7 @@ func (s *Service) runOne(ctx context.Context, db *sql.DB, cfg Config, g GroupCon
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if resp.StatusCode != http.StatusOK {
 		item.Error = fmt.Sprintf("网关返回 HTTP %d", resp.StatusCode)
-		s.insertResult(ctx, db, g, "error", "", item.Error, item.DurationMs, 0, 0)
+		_ = s.insertResult(ctx, db, g, "error", "", item.Error, item.DurationMs, 0, 0)
 		return item
 	}
 
@@ -470,12 +470,12 @@ func (s *Service) runOne(ctx context.Context, db *sql.DB, cfg Config, g GroupCon
 	}
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		item.Error = "解析网关响应失败"
-		s.insertResult(ctx, db, g, "error", "", item.Error, item.DurationMs, 0, 0)
+		_ = s.insertResult(ctx, db, g, "error", "", item.Error, item.DurationMs, 0, 0)
 		return item
 	}
 	if parsed.Error != nil && parsed.Error.Message != "" {
 		item.Error = "网关返回错误，请在管理员日志中排查"
-		s.insertResult(ctx, db, g, "error", "", item.Error, item.DurationMs, 0, 0)
+		_ = s.insertResult(ctx, db, g, "error", "", item.Error, item.DurationMs, 0, 0)
 		return item
 	}
 	content := ""
@@ -485,7 +485,7 @@ func (s *Service) runOne(ctx context.Context, db *sql.DB, cfg Config, g GroupCon
 	html := extractHTML(content)
 	if html == "" {
 		item.Error = "模型没有返回可渲染的 HTML"
-		s.insertResult(ctx, db, g, "error", "", item.Error, item.DurationMs,
+		_ = s.insertResult(ctx, db, g, "error", "", item.Error, item.DurationMs,
 			parsed.Usage.PromptTokens, parsed.Usage.CompletionTokens)
 		return item
 	}
@@ -501,6 +501,8 @@ func (s *Service) runOne(ctx context.Context, db *sql.DB, cfg Config, g GroupCon
 	return item
 }
 
+// insertResult logs database failures itself, so error-reporting callers may
+// preserve their original error even when its diagnostic row cannot be saved.
 func (s *Service) insertResult(ctx context.Context, db *sql.DB, g GroupConfig, status, html, errMsg string, durationMs, in, out int) error {
 	_, err := db.ExecContext(ctx,
 		`INSERT INTO pelican_results
@@ -719,14 +721,6 @@ func maskKey(k string) string {
 		return "***"
 	}
 	return k[:8] + "..." + k[len(k)-4:]
-}
-
-func truncate(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n]) + "…"
 }
 
 // extractHTML 从模型回复里取出可渲染的 HTML。

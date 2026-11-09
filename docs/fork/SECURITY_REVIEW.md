@@ -41,3 +41,5 @@ Local deployment logs, host paths, account records and screenshots are intention
 ## Publication gate follow-up
 
 GitHub push protection flagged two upstream native Google OAuth client pairs. They were removed from the unpublished initial history, not bypassed. The derivative now requires operator-supplied client IDs and secrets; missing configuration fails closed. Test fixtures use fake values. Production values were migrated locally into permission-600 deployment files without printing them. Focused unit and service tests cover the new configuration path.
+
+GitHub dependency analysis also flagged six advisories from the integration-test container libraries. Testcontainers was upgraded from 0.40.0 to 0.45.0, removing the legacy `github.com/docker/docker` dependency and upgrading `moby/go-archive` to 0.3.3 and `moby/sys/user` to 0.4.1. The integration harness now uses the new mapped-port API. These findings were fixed through dependency updates rather than dismissed as test-only.
