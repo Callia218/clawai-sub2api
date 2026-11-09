@@ -1,0 +1,31 @@
+export default {
+  label: 'From idea to outcome',
+  example: 'Illustrative demo',
+  accessible: 'An automatic demonstration of three AI workflows: writing code in a terminal, turning an idea into a plan, and receiving an answer through an API.',
+  input: 'Describe', processing: 'Process', output: 'Create',
+  working: 'Working', ready: 'Complete', context: 'Project context', result: 'Output',
+  codex: {
+    title: 'A few words. A new beginning.', subtitle: 'Turn an idea into working code, right from your terminal.',
+    command: 'codex "Add an AI assistant to my project"',
+    step1: 'Read project structure and context', step2: 'Build the chat component and endpoint', step3: 'Summarize changes and setup',
+    resultTitle: 'Your AI assistant is ready.', resultNote: 'An interface and the code to connect it.',
+    file1: 'Chat interface', file2: 'Streaming endpoint', file3: 'Setup guide',
+    answer: 'Hello. What shall we build today?', tag: 'Code generation',
+  },
+  reasoning: {
+    title: 'Complex questions. Clear next steps.', subtitle: 'Bring information together and find a way forward.',
+    command: 'Turn a product idea into an actionable plan.',
+    step1: 'Identify goals and constraints', step2: 'Compare approaches and priorities', step3: 'Organize the next steps',
+    resultTitle: 'Your next step, in focus.', resultNote: 'From an open question to a clear course of action.',
+    item1: 'Define the core experience', detail1: 'Focus on the first task people need to complete.',
+    item2: 'Build a small prototype', detail2: 'Connect a model and validate the interaction.',
+    item3: 'Refine the experience', detail3: 'Improve the details with real feedback.', tag: 'Task planning',
+  },
+  api: {
+    title: 'One request. More possibilities.', subtitle: 'Bring model capabilities into your own application.',
+    command: 'curl "$BASE_URL/chat/completions"',
+    step1: 'Receive the application request', step2: 'Call the selected model', step3: 'Return a structured response',
+    resultTitle: 'Results, right in your app.', resultNote: 'From an API request to an answer, in your workflow.',
+    answer: 'Put your idea in motion.', tag: 'API integration',
+  },
+}

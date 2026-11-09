@@ -1,0 +1,587 @@
+/* ============================================================================
+ * clawAI UI · Legacy Bridge
+ * ----------------------------------------------------------------------------
+ * 作用：把 style.css 里 `@layer components` 定义的旧全局类（.card / .btn /
+ *       .input / .table / .badge / .dropdown / .modal-* …）在视觉层重绘为
+ *       液态玻璃，**保持类名与尺寸契约不变**。
+ *
+ * 为什么这样做：
+ *   全站 317 个 .vue 页面都在用这些旧类。逐页重写不现实，也没必要——
+ *   只要把「令牌层 + 基础类层 + 外壳层」三层换掉，页面视觉就整体换代。
+ *
+ * 为什么不用 @layer：
+ *   未分层（unlayered）规则优先级高于任何 @layer，因此无需 !important 就能
+ *   稳定压过 tailwind 的 components / utilities 层。代价是会盖掉个别页面
+ *   刻意加的 bg-* 原子类——因此这里只覆盖视觉属性，绝不覆盖尺寸/布局。
+ * ========================================================================= */
+
+/* ============================================================ 卡片 */
+.card {
+  position: relative;
+  background-color: rgb(var(--ui-glass-rgb) / calc(var(--ui-glass-alpha) + 0.04));
+  -webkit-backdrop-filter: blur(22px) saturate(var(--ui-glass-sat)) brightness(var(--ui-glass-bright));
+  backdrop-filter: blur(22px) saturate(var(--ui-glass-sat)) brightness(var(--ui-glass-bright));
+  border: 0;
+  border-radius: var(--ui-r-xl);
+  box-shadow:
+    inset 0 0 0 1px var(--ui-edge),
+    inset 0 1px 1.5px var(--ui-edge-inner),
+    inset 0 -1px 1px var(--ui-edge-shade),
+    0 0 0 1px var(--ui-hairline),
+    var(--ui-shadow-3);
+  transition:
+    box-shadow var(--ui-dur-base) var(--ui-ease-out),
+    transform var(--ui-dur-base) var(--ui-ease-out),
+    background-color var(--ui-dur-base) var(--ui-ease-out);
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
+  background-color: rgb(var(--ui-glass-rgb) / calc(var(--ui-glass-alpha) + 0.2));
+  box-shadow:
+    inset 0 0 0 1px var(--ui-accent-ring),
+    inset 0 1px 2px var(--ui-edge-strong),
+    inset 0 -1px 1px var(--ui-edge-shade),
+    0 0 0 1px var(--ui-hairline),
+    var(--ui-shadow-4);
+}
+
+.card-glass {
+  background-color: rgb(var(--ui-glass-strong-rgb) / calc(var(--ui-glass-strong-alpha) + 0.06));
+  -webkit-backdrop-filter: blur(var(--ui-glass-strong-blur)) saturate(var(--ui-glass-sat))
+    brightness(var(--ui-glass-bright));
+  backdrop-filter: blur(var(--ui-glass-strong-blur)) saturate(var(--ui-glass-sat))
+    brightness(var(--ui-glass-bright));
+  border: 0;
+  border-radius: var(--ui-r-xl);
+  box-shadow:
+    inset 0 0 0 1px var(--ui-edge-strong),
+    inset 0 1px 2px var(--ui-edge-inner),
+    0 0 0 1px var(--ui-hairline),
+    var(--ui-shadow-4);
+}
+
+.card-header {
+  border-bottom: 1px solid var(--ui-line);
+}
+
+.card-footer {
+  border-top: 1px solid var(--ui-line);
+}
+
+/* ============================================================ 玻璃 */
+.glass {
+  background-color: rgb(var(--ui-glass-rgb) / calc(var(--ui-glass-alpha) + 0.06));
+  -webkit-backdrop-filter: blur(28px) saturate(var(--ui-glass-sat)) brightness(var(--ui-glass-bright));
+  backdrop-filter: blur(28px) saturate(var(--ui-glass-sat)) brightness(var(--ui-glass-bright));
+}
+
+.glass-card {
+  background-color: rgb(var(--ui-glass-rgb) / calc(var(--ui-glass-alpha) + 0.06));
+  -webkit-backdrop-filter: blur(26px) saturate(var(--ui-glass-sat)) brightness(var(--ui-glass-bright));
+  backdrop-filter: blur(26px) saturate(var(--ui-glass-sat)) brightness(var(--ui-glass-bright));
+  border: 0;
+  border-radius: var(--ui-r-xl);
+  box-shadow:
+    inset 0 0 0 1px var(--ui-edge),
+    inset 0 1px 1.5px var(--ui-edge-inner),
+    0 0 0 1px var(--ui-hairline),
+    var(--ui-shadow-3);
+}
+
+/* ============================================================ 统计卡 */
+.stat-card {
+  position: relative;
+  background-color: rgb(var(--ui-glass-rgb) / calc(var(--ui-glass-alpha) + 0.04));
+  -webkit-backdrop-filter: blur(22px) saturate(var(--ui-glass-sat)) brightness(var(--ui-glass-bright));
+  backdrop-filter: blur(22px) saturate(var(--ui-glass-sat)) brightness(var(--ui-glass-bright));
+  border-radius: var(--ui-r-xl);
+  box-shadow:
+    inset 0 0 0 1px var(--ui-edge),
+    inset 0 1px 1.5px var(--ui-edge-inner),
+    0 0 0 1px var(--ui-hairline),
+    var(--ui-shadow-3);
+}
+
+.stat-icon {
+  border-radius: var(--ui-r-md);
+}
+
+.stat-icon-primary {
+  background-color: var(--ui-accent-soft);
+  color: var(--ui-accent);
+}
+.stat-icon-success {
+  background-color: var(--ui-success-soft);
+  color: var(--ui-success);
+}
+.stat-icon-warning {
+  background-color: var(--ui-warning-soft);
+  color: var(--ui-warning);
+}
+.stat-icon-danger {
+  background-color: var(--ui-danger-soft);
+  color: var(--ui-danger);
+}
+
+.stat-value {
+  color: var(--ui-text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.026em;
+}
+
+.stat-label {
+  color: var(--ui-text-muted);
+}
+
+.stat-trend-up {
+  color: var(--ui-success);
+}
+.stat-trend-down {
+  color: var(--ui-danger);
+}
+
+/* ============================================================ 按钮 */
+.btn {
+  border-radius: var(--ui-r-md);
+  font-family: var(--ui-font);
+  font-weight: 590;
+  letter-spacing: -0.005em;
+  transition:
+    background-color var(--ui-dur-fast) var(--ui-ease-out),
+    background-position var(--ui-dur-base) var(--ui-ease-out),
+    box-shadow var(--ui-dur-fast) var(--ui-ease-out),
+    transform var(--ui-dur-fast) var(--ui-ease-out),
+    color var(--ui-dur-fast) var(--ui-ease-out),
+    opacity var(--ui-dur-fast) var(--ui-ease-out);
+}
+
+.btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ui-accent-ring);
+}
+
+.btn-primary {
+  color: var(--ui-accent-contrast);
+  background-image: var(--ui-arc);
+  background-size: 170% 170%;
+  background-position: 10% 50%;
+  box-shadow:
+    inset 0 1px 1px rgb(255 255 255 / 0.45),
+    inset 0 -1px 1px rgb(0 0 0 / 0.12),
+    0 8px 20px -10px rgb(13 148 136 / 0.62);
+}
+.btn-primary:hover {
+  background-position: 90% 50%;
+  box-shadow:
+    inset 0 1px 1px rgb(255 255 255 / 0.55),
+    inset 0 -1px 1px rgb(0 0 0 / 0.14),
+    0 12px 26px -10px rgb(13 148 136 / 0.72);
+}
+
+.btn-secondary {
+  color: var(--ui-text);
+  background-color: rgb(var(--ui-glass-strong-rgb) / calc(var(--ui-glass-strong-alpha) + 0.1));
+  -webkit-backdrop-filter: blur(14px) saturate(180%);
+  backdrop-filter: blur(14px) saturate(180%);
+  border: 0;
+  box-shadow:
+    inset 0 0 0 1px var(--ui-line),
+    inset 0 1px 1px var(--ui-edge-inner),
+    0 0 0 1px var(--ui-hairline),
+    var(--ui-shadow-2);
+}
+.btn-secondary:hover {
+  background-color: rgb(var(--ui-glass-strong-rgb) / calc(var(--ui-glass-strong-alpha) + 0.2));
+  border: 0;
+  box-shadow:
+    inset 0 0 0 1px var(--ui-line-strong),
+    inset 0 1px 1.5px var(--ui-edge-strong),
+    0 0 0 1px var(--ui-hairline),
+    var(--ui-shadow-3);
+}
+
+.btn-ghost {
+  color: var(--ui-text-soft);
+  background-color: transparent;
+}
+.btn-ghost:hover {
+  color: var(--ui-text);
+  background-color: var(--ui-accent-soft);
+}
+
+.btn-danger {
+  color: #fff;
+  background-image: linear-gradient(118deg, #f87171 0%, #dc2626 100%);
+  box-shadow:
+    inset 0 1px 1px rgb(255 255 255 / 0.3),
+    0 8px 20px -10px rgb(220 38 38 / 0.6);
+}
+.btn-danger:hover {
+  filter: brightness(1.06);
+}
+
+.btn-success {
+  color: #fff;
+  background-image: linear-gradient(118deg, #34d399 0%, #059669 100%);
+  box-shadow:
+    inset 0 1px 1px rgb(255 255 255 / 0.3),
+    0 8px 20px -10px rgb(5 150 105 / 0.6);
+}
+.btn-success:hover {
+  filter: brightness(1.06);
+}
+
+.btn-warning {
+  color: #fff;
+  background-image: linear-gradient(118deg, #fbbf24 0%, #d97706 100%);
+  box-shadow:
+    inset 0 1px 1px rgb(255 255 255 / 0.3),
+    0 8px 20px -10px rgb(217 119 6 / 0.6);
+}
+.btn-warning:hover {
+  filter: brightness(1.06);
+}
+
+/* 支付渠道按钮：保留品牌色，只统一圆角与内高光 */
+.btn-stripe,
+.btn-airwallex,
+.btn-alipay,
+.btn-wxpay {
+  border-radius: var(--ui-r-md);
+  box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.32), 0 0 0 1px var(--ui-hairline),
+    var(--ui-shadow-2);
+}
+
+/* ============================================================ 输入 */
+.input {
+  border-radius: var(--ui-r-md);
+  background-color: rgb(var(--ui-glass-strong-rgb) / calc(var(--ui-glass-strong-alpha) + 0.04));
+  -webkit-backdrop-filter: blur(12px) saturate(170%);
+  backdrop-filter: blur(12px) saturate(170%);
+  border: 0;
+  color: var(--ui-text);
+  box-shadow:
+    inset 0 0 0 1px var(--ui-line),
+    inset 0 1px 1px var(--ui-edge-inner),
+    inset 0 -1px 1px var(--ui-edge-shade);
+  transition:
+    box-shadow var(--ui-dur-base) var(--ui-ease-out),
+    background-color var(--ui-dur-base) var(--ui-ease-out);
+}
+
+.input::placeholder {
+  color: var(--ui-text-faint);
+}
+
+.input:focus {
+  background-color: rgb(var(--ui-glass-strong-rgb) / calc(var(--ui-glass-strong-alpha) + 0.14));
+  border: 0;
+  box-shadow:
+    inset 0 0 0 1.5px var(--ui-accent-ring),
+    inset 0 1px 1px var(--ui-edge-strong),
+    0 6px 18px -12px rgb(13 148 136 / 0.5);
+  outline: none;
+  --tw-ring-shadow: 0 0 #0000;
+}
+
+.input:disabled {
+  background-color: var(--ui-line-soft);
+  color: var(--ui-text-faint);
+}
+
+.input-error {
+  box-shadow:
+    inset 0 0 0 1.5px rgb(220 38 38 / 0.5),
+    inset 0 1px 1px var(--ui-edge-inner);
+}
+
+.input-label {
+  color: var(--ui-text-soft);
+  font-weight: 570;
+}
+
+.input-hint {
+  color: var(--ui-text-faint);
+}
+
+.input-error-text {
+  color: var(--ui-danger);
+}
+
+/* ============================================================ 表格 */
+.table-container {
+  border: 0;
+  border-radius: var(--ui-r-lg);
+  box-shadow: inset 0 0 0 1px var(--ui-line);
+  overflow-x: auto;
+}
+
+.table {
+  font-family: var(--ui-font);
+}
+
+.table th {
+  background-color: rgb(var(--ui-glass-soft-rgb) / calc(var(--ui-glass-soft-alpha) + 0.05));
+  color: var(--ui-text-faint);
+  font-size: var(--ui-fs-2xs);
+  font-weight: 640;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--ui-line);
+}
+
+.table td {
+  color: var(--ui-text-soft);
+  border-bottom: 1px solid var(--ui-line-soft);
+}
+
+.table tbody tr:hover {
+  background-color: rgb(var(--ui-glass-soft-rgb) / calc(var(--ui-glass-soft-alpha) + 0.07));
+}
+
+/* ============================================================ 徽章 */
+.badge {
+  font-family: var(--ui-font);
+  font-weight: 580;
+  letter-spacing: 0.008em;
+  box-shadow: inset 0 1px 0.5px var(--ui-edge-inner);
+}
+
+.badge-primary {
+  background-color: var(--ui-accent-soft);
+  color: var(--ui-accent);
+}
+.badge-success {
+  background-color: var(--ui-success-soft);
+  color: var(--ui-success);
+}
+.badge-warning {
+  background-color: var(--ui-warning-soft);
+  color: var(--ui-warning);
+}
+.badge-danger {
+  background-color: var(--ui-danger-soft);
+  color: var(--ui-danger);
+}
+.badge-gray {
+  background-color: var(--ui-line);
+  color: var(--ui-text-soft);
+}
+.badge-purple {
+  background-color: var(--ui-info-soft);
+  color: var(--ui-info);
+}
+
+/* ============================================================ 下拉 */
+.dropdown {
+  background-color: rgb(var(--ui-glass-strong-rgb) / calc(var(--ui-glass-strong-alpha) + 0.44));
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  backdrop-filter: blur(30px) saturate(180%);
+  border: 0;
+  border-radius: var(--ui-r-lg);
+  box-shadow:
+    inset 0 0 0 1px var(--ui-line),
+    inset 0 1px 1px var(--ui-edge-strong),
+    0 0 0 1px var(--ui-hairline),
+    var(--ui-shadow-4);
+}
+
+.dropdown-item {
+  color: var(--ui-text-soft);
+  font-family: var(--ui-font);
+  font-size: var(--ui-fs-xs);
+  font-weight: 540;
+  transition:
+    color var(--ui-dur-fast) var(--ui-ease-out),
+    background-color var(--ui-dur-fast) var(--ui-ease-out);
+}
+
+.dropdown-item:hover {
+  color: var(--ui-text);
+  background-color: var(--ui-line);
+}
+
+/* ============================================================ 模态框 */
+.modal-overlay {
+  background-color: rgb(2 6 14 / 0.5);
+  -webkit-backdrop-filter: blur(7px) saturate(120%);
+  backdrop-filter: blur(7px) saturate(120%);
+}
+
+.modal-content {
+  background-color: rgb(var(--ui-glass-strong-rgb) / calc(var(--ui-glass-strong-alpha) + 0.42));
+  -webkit-backdrop-filter: blur(var(--ui-glass-strong-blur)) saturate(var(--ui-glass-sat))
+    brightness(var(--ui-glass-bright));
+  backdrop-filter: blur(var(--ui-glass-strong-blur)) saturate(var(--ui-glass-sat))
+    brightness(var(--ui-glass-bright));
+  border: 0;
+  border-radius: var(--ui-r-2xl);
+  box-shadow:
+    inset 0 0 0 1px var(--ui-edge-strong),
+    inset 0 1px 2px var(--ui-edge-inner),
+    0 0 0 1px var(--ui-hairline),
+    var(--ui-shadow-4);
+}
+
+.modal-header {
+  border-bottom: 1px solid var(--ui-line);
+}
+
+.modal-title {
+  color: var(--ui-text);
+  letter-spacing: -0.016em;
+}
+
+.modal-footer {
+  border-top: 1px solid var(--ui-line);
+}
+
+/* ============================================================ Toast */
+.toast {
+  background-color: rgb(var(--ui-glass-strong-rgb) / calc(var(--ui-glass-strong-alpha) + 0.46));
+  -webkit-backdrop-filter: blur(26px) saturate(180%);
+  backdrop-filter: blur(26px) saturate(180%);
+  border-radius: var(--ui-r-lg);
+  box-shadow:
+    inset 0 0 0 1px var(--ui-line),
+    inset 0 1px 1px var(--ui-edge-strong),
+    0 0 0 1px var(--ui-hairline),
+    var(--ui-shadow-3);
+  color: var(--ui-text);
+}
+
+/* ============================================================ Tabs */
+.tabs {
+  border-radius: var(--ui-r-md);
+}
+
+/* ============================================================ 原子类白底
+ * 绝大多数页面不用 .card，而是直接写 bg-white（配各种圆角/边框）。
+ * 这里把内容区里的白底块统一玻璃化，避免「新旧两种卡片并存」。
+ * 例外：二维码 / 图片 / 画布 / 显式 .keep-solid 保持不透明。
+ */
+.shell__content .bg-white:not(.keep-solid):not(.qr-code):not(.qr-container):not(canvas) {
+  background-color: rgb(var(--ui-glass-rgb) / calc(var(--ui-glass-alpha) + 0.06));
+  -webkit-backdrop-filter: blur(18px) saturate(175%) brightness(105%);
+  backdrop-filter: blur(18px) saturate(175%) brightness(105%);
+}
+
+html.dark .shell__content .bg-white:not(.keep-solid):not(.qr-code):not(.qr-container):not(canvas),
+html[data-theme='dark'] .shell__content .bg-white:not(.keep-solid):not(.qr-code):not(.qr-container):not(canvas) {
+  background-color: rgb(var(--ui-glass-rgb) / calc(var(--ui-glass-alpha) + 0.10));
+}
+
+/* 带边框/阴影的白底大块，补上玻璃的厚度感 */
+.shell__content .bg-white.rounded-xl:not(.keep-solid),
+.shell__content .bg-white.rounded-2xl:not(.keep-solid),
+.shell__content .bg-white.rounded-3xl:not(.keep-solid) {
+  border-color: transparent;
+  box-shadow:
+    inset 0 0 0 1px var(--ui-edge),
+    inset 0 1px 1.5px var(--ui-edge-inner),
+    inset 0 -1px 1px var(--ui-edge-shade),
+    0 0 0 1px var(--ui-hairline),
+    var(--ui-shadow-2);
+}
+
+/* 灰底区块（表格头、分区背景）同样柔化，避免在玻璃上显得脏 */
+.shell__content .bg-gray-50:not(.keep-solid),
+.shell__content .bg-gray-100:not(.keep-solid) {
+  background-color: rgb(var(--ui-glass-soft-rgb) / calc(var(--ui-glass-soft-alpha) + 0.05));
+}
+
+/* ============================================================ 表格页容器
+ * TablePageLayout.vue 的 .table-scroll-container 用 scoped 的 @apply bg-white，
+ * 元素上没有 bg-white 类，全局覆盖打不到。这里用「双写类名」把特异性提到 0,3,0
+ * 以上，稳定压过 .table-scroll-container[data-v-x]（0,2,0）。
+ * 同样处理 thead / th / td 的浅灰底与分隔线。
+ */
+.shell__content .table-scroll-container.table-scroll-container {
+  background-color: rgb(var(--ui-glass-rgb) / calc(var(--ui-glass-alpha) + 0.06));
+  -webkit-backdrop-filter: blur(22px) saturate(var(--ui-glass-sat)) brightness(var(--ui-glass-bright));
+  backdrop-filter: blur(22px) saturate(var(--ui-glass-sat)) brightness(var(--ui-glass-bright));
+  border-color: transparent;
+  box-shadow:
+    inset 0 0 0 1px var(--ui-edge),
+    inset 0 1px 1.5px var(--ui-edge-inner),
+    inset 0 -1px 1px var(--ui-edge-shade),
+    0 0 0 1px var(--ui-hairline),
+    var(--ui-shadow-3);
+}
+
+html.dark .shell__content .table-scroll-container.table-scroll-container,
+html[data-theme='dark'] .shell__content .table-scroll-container.table-scroll-container {
+  background-color: rgb(var(--ui-glass-rgb) / calc(var(--ui-glass-alpha) + 0.10));
+  border-color: transparent;
+}
+
+.shell__content .table-scroll-container.table-scroll-container thead {
+  background-color: rgb(var(--ui-glass-soft-rgb) / calc(var(--ui-glass-soft-alpha) + 0.06));
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+  backdrop-filter: blur(12px) saturate(160%);
+}
+
+.shell__content .table-scroll-container.table-scroll-container th,
+.shell__content .table-scroll-container.table-scroll-container td {
+  border-bottom-color: var(--ui-line);
+}
+
+.shell__content .table-scroll-container.table-scroll-container tbody tr:hover {
+  background-color: rgb(var(--ui-glass-rgb) / calc(var(--ui-glass-alpha) + 0.02));
+}
+
+/* 表格里的操作按钮组不要被卡片阴影污染 */
+.shell__content .table-scroll-container.table-scroll-container .btn {
+  box-shadow: none;
+}
+
+/* 粘性列（DataTable 里 tbody .sticky-col 写死 background-color: white）
+ * 横向滚动时必须遮住下面的内容，所以这里不能全透明：用 0.88 的不透明度
+ * + 轻微模糊，既保持玻璃质感又不穿透。
+ */
+.shell__content .table-scroll-container.table-scroll-container tbody .sticky-col,
+.shell__content .table-scroll-container.table-scroll-container .sticky-header-cell {
+  background-color: rgb(var(--ui-glass-rgb) / 0.88);
+  -webkit-backdrop-filter: blur(16px) saturate(170%);
+  backdrop-filter: blur(16px) saturate(170%);
+}
+
+.shell__content .table-scroll-container.table-scroll-container tbody tr:hover .sticky-col {
+  background-color: rgb(var(--ui-glass-rgb) / 0.94);
+}
+
+html.dark .shell__content .table-scroll-container.table-scroll-container tbody .sticky-col,
+html.dark .shell__content .table-scroll-container.table-scroll-container .sticky-header-cell,
+html[data-theme='dark'] .shell__content .table-scroll-container.table-scroll-container tbody .sticky-col,
+html[data-theme='dark'] .shell__content .table-scroll-container.table-scroll-container .sticky-header-cell {
+  background-color: rgb(11 17 31 / 0.9);
+}
+
+html.dark .shell__content .table-scroll-container.table-scroll-container tbody tr:hover .sticky-col,
+html[data-theme='dark'] .shell__content .table-scroll-container.table-scroll-container tbody tr:hover .sticky-col {
+  background-color: rgb(17 26 44 / 0.95);
+}
+
+/* 表头整体 */
+.shell__content .table-scroll-container.table-scroll-container .table-wrapper .table-header {
+  background-color: rgb(var(--ui-glass-soft-rgb) / calc(var(--ui-glass-soft-alpha) + 0.08));
+}
+
+html.dark .shell__content .table-scroll-container.table-scroll-container .table-wrapper .table-header,
+html[data-theme='dark'] .shell__content .table-scroll-container.table-scroll-container .table-wrapper .table-header {
+  background-color: rgb(11 17 31 / 0.72);
+}
+
+/* ============================================================ 页面级容器
+ * 旧页面常见 `<div class="p-4 md:p-6 lg:p-8">` 之类的外层，这里不改；
+ * 只把某些页面自带的整页底色清掉，避免盖住液态背景层。
+ */
+.bg-mesh-gradient {
+  background-image: none;
+}
+
+html.dark body,
+html[data-theme='dark'] body {
+  background-color: var(--ui-canvas);
+}

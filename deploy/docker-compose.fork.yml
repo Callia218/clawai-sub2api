@@ -1,0 +1,11 @@
+# Apply after docker-compose.yml. Build this image from the repository first.
+services:
+  sub2api:
+    image: clawai-sub2api:0.2.20-clawai.1
+    ports: !override
+      - "127.0.0.1:8080:8080"
+    environment:
+      JWT_REQUIRE_ISSUED_TOKEN: "true"
+      BILLING_INFLIGHT_RESERVATION_ENABLED: "true"
+      BILLING_INFLIGHT_RESERVATION_FAIL_CLOSED_ON_UNPRICED: "true"
+      MCP_PUBLIC_URL: ""

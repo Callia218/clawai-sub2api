@@ -1,0 +1,573 @@
+package service
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"regexp"
+	"strconv"
+	"strings"
+
+	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
+	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
+	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+)
+
+// validateProviderConfig runs the provider's constructor to surface config-level
+// errors at save time (e.g. wxpay missing certSerial), instead of only failing
+// when an order is created. Returns the structured ApplicationError from the
+// constructor so the frontend i18n layer can localize it.
+//
+// Only validates enabled instances — a disabled instance may be a half-filled
+// draft the admin will complete later.
+func (s *PaymentConfigService) validateProviderConfig(providerKey string, config map[string]string) error {
+	_, err := provider.CreateProvider(providerKey, "_validate_", config)
+	return err
+}
+
+// --- Provider Instance CRUD ---
+
+func (s *PaymentConfigService) ListProviderInstances(ctx context.Context) ([]*dbent.PaymentProviderInstance, error) {
+	return s.entClient.PaymentProviderInstance.Query().Order(paymentproviderinstance.BySortOrder()).All(ctx)
+}
+
+// ProviderInstanceResponse is the API response for a provider instance.
+type ProviderInstanceResponse struct {
+	ID              int64             `json:"id"`
+	ProviderKey     string            `json:"provider_key"`
+	Name            string            `json:"name"`
+	Config          map[string]string `json:"config"`
+	SupportedTypes  []string          `json:"supported_types"`
+	Limits          string            `json:"limits"`
+	Enabled         bool              `json:"enabled"`
+	RefundEnabled   bool              `json:"refund_enabled"`
+	AllowUserRefund bool              `json:"allow_user_refund"`
+	SortOrder       int               `json:"sort_order"`
+	PaymentMode     string            `json:"payment_mode"`
+}
+
+// ListProviderInstancesWithConfig returns provider instances with decrypted config.
+func (s *PaymentConfigService) ListProviderInstancesWithConfig(ctx context.Context) ([]ProviderInstanceResponse, error) {
+	instances, err := s.entClient.PaymentProviderInstance.Query().
+		Order(paymentproviderinstance.BySortOrder()).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]ProviderInstanceResponse, 0, len(instances))
+	for _, inst := range instances {
+		resp := ProviderInstanceResponse{
+			ID: int64(inst.ID), ProviderKey: inst.ProviderKey, Name: inst.Name,
+			SupportedTypes: splitTypes(inst.SupportedTypes), Limits: inst.Limits,
+			Enabled: inst.Enabled, RefundEnabled: inst.RefundEnabled, AllowUserRefund: inst.AllowUserRefund,
+			SortOrder: inst.SortOrder, PaymentMode: inst.PaymentMode,
+		}
+		resp.Config, err = s.decryptAndMaskConfig(inst.ProviderKey, inst.Config)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt config for instance %d: %w", inst.ID, err)
+		}
+		result = append(result, resp)
+	}
+	return result, nil
+}
+
+// decryptAndMaskConfig returns the stored config with sensitive fields omitted.
+// Admin UIs display masked placeholders for these; the raw values never leave
+// the server. Callers that need the full config (e.g. payment runtime) must
+// use decryptConfig directly.
+func (s *PaymentConfigService) decryptAndMaskConfig(providerKey, encrypted string) (map[string]string, error) {
+	cfg, err := s.decryptConfig(encrypted)
+	if err != nil {
+		return nil, err
+	}
+	if cfg == nil {
+		return nil, nil
+	}
+	masked := make(map[string]string, len(cfg))
+	for k, v := range cfg {
+		if isSensitiveProviderConfigField(providerKey, k) {
+			continue
+		}
+		masked[k] = v
+	}
+	return masked, nil
+}
+
+// pendingOrderStatuses are order statuses considered "in progress".
+var pendingOrderStatuses = []string{
+	payment.OrderStatusPending,
+	payment.OrderStatusPaid,
+	payment.OrderStatusRecharging,
+}
+
+// providerSensitiveConfigFields is the authoritative list of config keys that
+// are treated as secrets per provider. Must stay in sync with the frontend
+// definition at frontend/src/components/payment/providerConfig.ts
+// (PROVIDER_CONFIG_FIELDS, fields with sensitive: true).
+//
+// Key matching is case-insensitive. Non-listed keys (e.g. appId, notifyUrl,
+// stripe publishableKey) are returned in plaintext by the admin GET API.
+var providerSensitiveConfigFields = map[string]map[string]struct{}{
+	payment.TypeEasyPay:   {"pkey": {}},
+	payment.TypeAlipay:    {"privatekey": {}, "publickey": {}, "alipaypublickey": {}},
+	payment.TypeWxpay:     {"privatekey": {}, "apiv3key": {}, "publickey": {}},
+	payment.TypeStripe:    {"secretkey": {}, "webhooksecret": {}},
+	payment.TypeAirwallex: {"apikey": {}, "webhooksecret": {}},
+}
+
+// providerPendingOrderProtectedConfigFields lists config keys that cannot be
+// changed while the instance has in-progress orders. This includes secrets plus
+// all provider identity fields that are snapshotted into orders or used by
+// webhook/refund verification.
+var providerPendingOrderProtectedConfigFields = map[string]map[string]struct{}{
+	payment.TypeEasyPay:   {"pkey": {}, "pid": {}},
+	payment.TypeAlipay:    {"privatekey": {}, "publickey": {}, "alipaypublickey": {}, "appid": {}},
+	payment.TypeWxpay:     {"privatekey": {}, "apiv3key": {}, "publickey": {}, "appid": {}, "mpappid": {}, "mchid": {}, "publickeyid": {}, "certserial": {}},
+	payment.TypeStripe:    {"secretkey": {}, "webhooksecret": {}, "currency": {}},
+	payment.TypeAirwallex: {"clientid": {}, "apikey": {}, "webhooksecret": {}, "apibase": {}, "accountid": {}, "currency": {}},
+}
+
+func isSensitiveProviderConfigField(providerKey, fieldName string) bool {
+	fields, ok := providerSensitiveConfigFields[providerKey]
+	if !ok {
+		return false
+	}
+	_, found := fields[strings.ToLower(fieldName)]
+	return found
+}
+
+func hasPendingOrderProtectedConfigChange(providerKey string, currentConfig, nextConfig map[string]string) bool {
+	fields, ok := providerPendingOrderProtectedConfigFields[providerKey]
+	if !ok {
+		return false
+	}
+	for fieldName := range fields {
+		if providerConfigFieldValue(currentConfig, fieldName) != providerConfigFieldValue(nextConfig, fieldName) {
+			return true
+		}
+	}
+	return false
+}
+
+func providerConfigFieldValue(config map[string]string, fieldName string) string {
+	for key, value := range config {
+		if strings.EqualFold(key, fieldName) {
+			return value
+		}
+	}
+	return ""
+}
+
+func (s *PaymentConfigService) countPendingOrders(ctx context.Context, providerInstanceID int64) (int, error) {
+	return s.entClient.PaymentOrder.Query().
+		Where(
+			paymentorder.ProviderInstanceIDEQ(strconv.FormatInt(providerInstanceID, 10)),
+			paymentorder.StatusIn(pendingOrderStatuses...),
+		).Count(ctx)
+}
+
+func (s *PaymentConfigService) countPendingOrdersByPlan(ctx context.Context, planID int64) (int, error) {
+	return s.entClient.PaymentOrder.Query().
+		Where(
+			paymentorder.PlanIDEQ(planID),
+			paymentorder.StatusIn(pendingOrderStatuses...),
+		).Count(ctx)
+}
+
+var validProviderKeys = map[string]bool{
+	payment.TypeEasyPay: true, payment.TypeAlipay: true, payment.TypeWxpay: true, payment.TypeStripe: true, payment.TypeAirwallex: true,
+}
+
+func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req CreateProviderInstanceRequest) (*dbent.PaymentProviderInstance, error) {
+	typesStr := joinTypes(req.SupportedTypes)
+	if err := validateProviderRequest(req.ProviderKey, req.Name, typesStr); err != nil {
+		return nil, err
+	}
+	if req.ProviderKey == payment.TypeEasyPay {
+		if err := validateEasyPayCustomMethods(req.Config, typesStr); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.validateVisibleMethodEnablementConflicts(ctx, 0, req.ProviderKey, typesStr, req.Enabled); err != nil {
+		return nil, err
+	}
+	if req.Enabled {
+		if err := s.validateProviderConfig(req.ProviderKey, req.Config); err != nil {
+			return nil, err
+		}
+	}
+	enc, err := s.encryptConfig(req.Config)
+	if err != nil {
+		return nil, err
+	}
+	allowUserRefund := req.AllowUserRefund && req.RefundEnabled
+	return s.entClient.PaymentProviderInstance.Create().
+		SetProviderKey(req.ProviderKey).SetName(req.Name).SetConfig(enc).
+		SetSupportedTypes(typesStr).SetEnabled(req.Enabled).SetPaymentMode(req.PaymentMode).
+		SetSortOrder(req.SortOrder).SetLimits(req.Limits).SetRefundEnabled(req.RefundEnabled).
+		SetAllowUserRefund(allowUserRefund).
+		Save(ctx)
+}
+
+func validateProviderRequest(providerKey, name, supportedTypes string) error {
+	if strings.TrimSpace(name) == "" {
+		return infraerrors.BadRequest("VALIDATION_ERROR", "provider name is required")
+	}
+	if !validProviderKeys[providerKey] {
+		return infraerrors.BadRequest("VALIDATION_ERROR", fmt.Sprintf("invalid provider key: %s", providerKey))
+	}
+	// supported_types can be empty (provider accepts no payment types until configured)
+	return nil
+}
+
+var easyPayCustomMethodCodePattern = regexp.MustCompile(`^[a-z0-9_-]+$`)
+var easyPayUpstreamMethodCodePattern = regexp.MustCompile(`^[a-z0-9_.-]+$`)
+
+type easyPayCustomMethodConfig struct {
+	Type         string `json:"type"`
+	UpstreamType string `json:"upstreamType"`
+	DisplayName  string `json:"displayName"`
+}
+
+func validateEasyPayCustomMethods(config map[string]string, supportedTypes string) error {
+	if config == nil {
+		config = map[string]string{}
+	}
+	raw := strings.TrimSpace(config["customMethods"])
+	methods := make([]easyPayCustomMethodConfig, 0)
+	if raw != "" {
+		if err := json.Unmarshal([]byte(raw), &methods); err != nil {
+			return infraerrors.BadRequest("VALIDATION_ERROR", "customMethods must be a JSON array")
+		}
+	}
+
+	customTypes := make(map[string]struct{}, len(methods))
+	for _, method := range methods {
+		method.Type = strings.TrimSpace(method.Type)
+		method.UpstreamType = strings.TrimSpace(method.UpstreamType)
+		if method.Type == "" || method.UpstreamType == "" {
+			return infraerrors.BadRequest("VALIDATION_ERROR", "customMethods upstreamType is required")
+		}
+		if !easyPayCustomMethodCodePattern.MatchString(method.Type) {
+			return infraerrors.BadRequest("VALIDATION_ERROR", "customMethods type may only contain lowercase letters, digits, underscores, and hyphens")
+		}
+		if !easyPayUpstreamMethodCodePattern.MatchString(method.UpstreamType) {
+			return infraerrors.BadRequest("VALIDATION_ERROR", "customMethods upstreamType may only contain lowercase letters, digits, periods, underscores, and hyphens")
+		}
+		if easyPayCustomMethodTypeConflictsWithBuiltin(method.Type) {
+			return infraerrors.BadRequest("VALIDATION_ERROR", "customMethods type cannot start with alipay or wxpay")
+		}
+		if _, exists := customTypes[method.Type]; exists {
+			return infraerrors.BadRequest("VALIDATION_ERROR", "duplicate customMethods type")
+		}
+		customTypes[method.Type] = struct{}{}
+	}
+
+	for _, supportedType := range splitTypes(supportedTypes) {
+		supportedType = strings.TrimSpace(supportedType)
+		if supportedType == "" || supportedType == payment.TypeAlipay || supportedType == payment.TypeWxpay {
+			continue
+		}
+		if !easyPayCustomMethodCodePattern.MatchString(supportedType) {
+			return infraerrors.BadRequest("VALIDATION_ERROR", fmt.Sprintf("supported EasyPay custom type %s may only contain lowercase letters, digits, underscores, and hyphens", supportedType))
+		}
+		if _, exists := customTypes[supportedType]; !exists {
+			return infraerrors.BadRequest("VALIDATION_ERROR", fmt.Sprintf("supported EasyPay custom type %s has no customMethods mapping", supportedType))
+		}
+	}
+	return nil
+}
+
+func easyPayCustomMethodTypeConflictsWithBuiltin(methodType string) bool {
+	return strings.HasPrefix(methodType, payment.TypeAlipay) || strings.HasPrefix(methodType, payment.TypeWxpay)
+}
+
+// UpdateProviderInstance updates a provider instance by ID (patch semantics).
+// NOTE: This function exceeds 30 lines due to per-field nil-check patch update
+// boilerplate and pending-order safety checks.
+func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id int64, req UpdateProviderInstanceRequest) (*dbent.PaymentProviderInstance, error) {
+	current, err := s.entClient.PaymentProviderInstance.Get(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("load provider instance: %w", err)
+	}
+	var pendingOrderCount *int
+	getPendingOrderCount := func() (int, error) {
+		if pendingOrderCount != nil {
+			return *pendingOrderCount, nil
+		}
+		count, err := s.countPendingOrders(ctx, id)
+		if err != nil {
+			return 0, fmt.Errorf("check pending orders: %w", err)
+		}
+		pendingOrderCount = &count
+		return count, nil
+	}
+	nextEnabled := current.Enabled
+	if req.Enabled != nil {
+		nextEnabled = *req.Enabled
+	}
+	nextSupportedTypes := current.SupportedTypes
+	if req.SupportedTypes != nil {
+		nextSupportedTypes = joinTypes(req.SupportedTypes)
+	}
+	if err := s.validateVisibleMethodEnablementConflicts(ctx, id, current.ProviderKey, nextSupportedTypes, nextEnabled); err != nil {
+		return nil, err
+	}
+	var mergedConfig map[string]string
+	if req.Config != nil {
+		currentConfig, err := s.decryptConfig(current.Config)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt existing config: %w", err)
+		}
+		mergedConfig, err = s.mergeConfig(ctx, id, req.Config)
+		if err != nil {
+			return nil, err
+		}
+		if hasPendingOrderProtectedConfigChange(current.ProviderKey, currentConfig, mergedConfig) {
+			count, err := getPendingOrderCount()
+			if err != nil {
+				return nil, err
+			}
+			if count > 0 {
+				return nil, infraerrors.Conflict("PENDING_ORDERS", "instance has pending orders").
+					WithMetadata(map[string]string{"count": strconv.Itoa(count)})
+			}
+		}
+	}
+	if req.Enabled != nil && !*req.Enabled {
+		count, err := getPendingOrderCount()
+		if err != nil {
+			return nil, err
+		}
+		if count > 0 {
+			return nil, infraerrors.Conflict("PENDING_ORDERS", "instance has pending orders").
+				WithMetadata(map[string]string{"count": strconv.Itoa(count)})
+		}
+	}
+	configToValidate := mergedConfig
+	if configToValidate == nil {
+		configToValidate, err = s.decryptConfig(current.Config)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt existing config: %w", err)
+		}
+	}
+	if current.ProviderKey == payment.TypeEasyPay {
+		if err := validateEasyPayCustomMethods(configToValidate, nextSupportedTypes); err != nil {
+			return nil, err
+		}
+	}
+	// Validate merged config when the instance will end up enabled.
+	// This surfaces provider-level errors (e.g. wxpay missing certSerial) at save time,
+	// so admins see them in the dialog instead of only when an order is created.
+	finalEnabled := current.Enabled
+	if req.Enabled != nil {
+		finalEnabled = *req.Enabled
+	}
+	if finalEnabled {
+		if err := s.validateProviderConfig(current.ProviderKey, configToValidate); err != nil {
+			return nil, err
+		}
+	}
+	u := s.entClient.PaymentProviderInstance.UpdateOneID(id)
+	if req.Name != nil {
+		u.SetName(*req.Name)
+	}
+	if mergedConfig != nil {
+		enc, err := s.encryptConfig(mergedConfig)
+		if err != nil {
+			return nil, err
+		}
+		u.SetConfig(enc)
+	}
+	if req.SupportedTypes != nil {
+		// Check pending orders before removing payment types
+		count, err := getPendingOrderCount()
+		if err != nil {
+			return nil, err
+		}
+		if count > 0 {
+			// Load current instance to compare types
+			oldTypes := strings.Split(current.SupportedTypes, ",")
+			newTypes := req.SupportedTypes
+			for _, ot := range oldTypes {
+				ot = strings.TrimSpace(ot)
+				if ot == "" {
+					continue
+				}
+				found := false
+				for _, nt := range newTypes {
+					if strings.TrimSpace(nt) == ot {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return nil, infraerrors.Conflict("PENDING_ORDERS", "cannot remove payment types while instance has pending orders").
+						WithMetadata(map[string]string{"count": strconv.Itoa(count)})
+				}
+			}
+		}
+		u.SetSupportedTypes(joinTypes(req.SupportedTypes))
+	}
+	if req.Enabled != nil {
+		u.SetEnabled(*req.Enabled)
+	}
+	if req.SortOrder != nil {
+		u.SetSortOrder(*req.SortOrder)
+	}
+	if req.Limits != nil {
+		u.SetLimits(*req.Limits)
+	}
+	if req.RefundEnabled != nil {
+		u.SetRefundEnabled(*req.RefundEnabled)
+		// Cascade: turning off refund_enabled also disables allow_user_refund
+		if !*req.RefundEnabled {
+			u.SetAllowUserRefund(false)
+		}
+	}
+	if req.AllowUserRefund != nil {
+		// Only allow enabling when refund_enabled is (or will be) true
+		if *req.AllowUserRefund {
+			refundEnabled := false
+			if req.RefundEnabled != nil {
+				refundEnabled = *req.RefundEnabled
+			} else {
+				refundEnabled = current.RefundEnabled
+			}
+			if refundEnabled {
+				u.SetAllowUserRefund(true)
+			}
+		} else {
+			u.SetAllowUserRefund(false)
+		}
+	}
+	if req.PaymentMode != nil {
+		u.SetPaymentMode(*req.PaymentMode)
+	}
+	return u.Save(ctx)
+}
+
+// GetUserRefundEligibleInstanceIDs returns provider instance IDs that allow user refund.
+func (s *PaymentConfigService) GetUserRefundEligibleInstanceIDs(ctx context.Context) ([]string, error) {
+	instances, err := s.entClient.PaymentProviderInstance.Query().
+		Where(
+			paymentproviderinstance.RefundEnabledEQ(true),
+			paymentproviderinstance.AllowUserRefundEQ(true),
+		).Select(paymentproviderinstance.FieldID).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(instances))
+	for _, inst := range instances {
+		ids = append(ids, strconv.FormatInt(int64(inst.ID), 10))
+	}
+	return ids, nil
+}
+
+func (s *PaymentConfigService) mergeConfig(ctx context.Context, id int64, newConfig map[string]string) (map[string]string, error) {
+	inst, err := s.entClient.PaymentProviderInstance.Get(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("load existing provider: %w", err)
+	}
+	existing, err := s.decryptConfig(inst.Config)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt existing config for instance %d: %w", id, err)
+	}
+	if existing == nil {
+		existing = map[string]string{}
+	}
+	for k, v := range newConfig {
+		// Preserve existing secrets when the client submits an empty value
+		// (admin UI omits the value to indicate "leave unchanged").
+		if v == "" && isSensitiveProviderConfigField(inst.ProviderKey, k) {
+			continue
+		}
+		existing[k] = v
+	}
+	return existing, nil
+}
+
+// decryptConfig parses a stored provider config.
+// Supported formats: the enc:v1 AES-256-GCM envelope (current write format),
+// plaintext JSON (upstream's format, still accepted for un-migrated rows), and
+// the legacy iv:authTag:ciphertext envelope.
+//
+// An enc:v1 value that cannot be decrypted is a hard error on purpose: treating
+// it as an empty config would disable every payment channel without any visible
+// failure, leaving the admin to guess why the config "disappeared". Values in
+// no recognized format still fall back to empty so they can be re-entered.
+func (s *PaymentConfigService) decryptConfig(stored string) (map[string]string, error) {
+	// CF_PAYMENT_CONFIG_ENCRYPTION_PATCH: 三种格式统一解析（enc:v1 信封 / 明文 JSON /
+	// 旧 iv:authTag:ciphertext 信封）。
+	cfg, err := payment.ParseStoredConfig(stored, s.encryptionKey)
+	if err == nil {
+		return cfg, nil
+	}
+	// 密文在库却解不开，只可能是主密钥不匹配或数据损坏。这里必须 fail closed：
+	// 静默当成空配置会让所有支付通道在没有任何报错的情况下失效，而且管理员
+	// 从后台只会看到「配置丢了」，无从判断是密钥问题。
+	if payment.IsEncryptedConfig(stored) {
+		return nil, fmt.Errorf("payment provider config is encrypted but cannot be decrypted (check TOTP_ENCRYPTION_KEY): %w", err)
+	}
+	// 既不是信封也不是合法 JSON：保持上游行为，当成空配置让管理员重填。
+	slog.Warn("payment provider config unreadable, treating as empty for re-entry",
+		"stored_len", len(stored), "error", err)
+	return nil, nil
+}
+
+func (s *PaymentConfigService) DeleteProviderInstance(ctx context.Context, id int64) error {
+	count, err := s.countPendingOrders(ctx, id)
+	if err != nil {
+		return fmt.Errorf("check pending orders: %w", err)
+	}
+	if count > 0 {
+		return infraerrors.Conflict("PENDING_ORDERS",
+			fmt.Sprintf("this instance has %d in-progress orders and cannot be deleted — wait for orders to complete or disable the instance first", count))
+	}
+	return s.entClient.PaymentProviderInstance.DeleteOneID(id).Exec(ctx)
+}
+
+// encryptConfig serialises a provider config for storage.
+// Configs carrying credentials are always written as an enc:v1 AES-256-GCM
+// envelope. Plaintext is only used for credential-free configs, and only when
+// no master key is configured.
+func (s *PaymentConfigService) encryptConfig(cfg map[string]string) (string, error) {
+	// CF_PAYMENT_CONFIG_ENCRYPTION_PATCH: 恢复加密写路径。
+	if cfg == nil {
+		cfg = map[string]string{}
+	}
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return "", fmt.Errorf("marshal config: %w", err)
+	}
+	if len(s.encryptionKey) == payment.AES256KeySize {
+		envelope, err := payment.EncryptConfig(string(data), s.encryptionKey)
+		if err != nil {
+			return "", fmt.Errorf("encrypt provider config: %w", err)
+		}
+		return envelope, nil
+	}
+	// 主密钥缺失时，含凭据的配置绝不静默降级成明文 —— 那等于把商户私钥
+	// 交给任何能读库或读备份的人。宁可保存失败，让管理员去配 TOTP_ENCRYPTION_KEY。
+	if configHasSensitiveField(cfg) {
+		return "", fmt.Errorf("cannot store payment credentials: TOTP_ENCRYPTION_KEY is not configured; set a 64-hex-char key (openssl rand -hex 32) and restart the service")
+	}
+	slog.Warn("payment provider config stored as plaintext: TOTP_ENCRYPTION_KEY is not configured and the config holds no credentials")
+	return string(data), nil
+}
+
+// configHasSensitiveField reports whether cfg carries any provider credential,
+// using the union of all providers' sensitive field lists.
+func configHasSensitiveField(cfg map[string]string) bool {
+	for _, fields := range providerSensitiveConfigFields {
+		for key := range cfg {
+			if _, ok := fields[strings.ToLower(key)]; ok {
+				return true
+			}
+		}
+	}
+	return false
+}

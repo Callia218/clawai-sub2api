@@ -1,0 +1,236 @@
+/* ============================================================================
+ * clawAI UI · Design Tokens
+ * ----------------------------------------------------------------------------
+ * 全站唯一的视觉真相来源。所有新组件（src/ui/*、src/shell/*）只允许引用这里的
+ * 变量，不允许硬编码颜色 / 间距 / 圆角 / 动效曲线。
+ *
+ * 设计语言：iOS 26/27 Liquid Glass
+ *   - 玻璃 = 半透明表面 + 背景模糊 + 饱和度提升 + 边缘折射 + 镜面高光
+ *   - 一切层级靠「光」区分，而不是靠粗描边或重阴影
+ *
+ * 主题切换同时支持 html.dark 与 html[data-theme="dark"]（历史两套写法都在用）。
+ * ========================================================================= */
+
+:root {
+  color-scheme: light;
+
+  /* ---------------------------------------------------------------- 画布 */
+  --ui-canvas: #d5dff2;
+  --ui-canvas-deep: #c2d0ea;
+  --ui-canvas-tint-1: #6ee7d7;
+  --ui-canvas-tint-2: #93c5fd;
+  --ui-canvas-tint-3: #c4b5fd;
+  --ui-canvas-tint-4: #f9a8d4;
+
+  /* ---------------------------------------------------------------- 玻璃 */
+  /* rgb 三元组，供 rgb(var(--x) / alpha) 使用 */
+  --ui-glass-rgb: 255 255 255;
+  --ui-glass-strong-rgb: 255 255 255;
+  --ui-glass-soft-rgb: 255 255 255;
+
+  --ui-glass-alpha: 0.60;
+  --ui-glass-strong-alpha: 0.74;
+  --ui-glass-soft-alpha: 0.40;
+
+  --ui-glass-blur: 26px;
+  --ui-glass-strong-blur: 40px;
+  --ui-glass-sat: 190%;
+  --ui-glass-bright: 108%;
+
+  /* 玻璃边缘：外侧描边 + 内侧高光 */
+  --ui-edge: rgb(255 255 255 / 0.72);
+  --ui-edge-strong: rgb(255 255 255 / 0.90);
+  --ui-edge-inner: rgb(255 255 255 / 0.80);
+  --ui-edge-shade: rgb(15 23 42 / 0.07);
+
+  /* 轮廓发丝线：浅色背景上白描边完全不可见，靠这一条定义面板边界 */
+  --ui-hairline: rgb(15 23 42 / 0.13);
+
+  /* ---------------------------------------------------------------- 文本 */
+  --ui-text: #0b1220;
+  --ui-text-soft: #29384d;
+  --ui-text-muted: #4a5b73;
+  --ui-text-faint: #6b7d95;
+  --ui-text-inverse: #f8fafc;
+
+  /* ---------------------------------------------------------------- 描边 */
+  --ui-line: rgb(15 23 42 / 0.08);
+  --ui-line-soft: rgb(15 23 42 / 0.05);
+  --ui-line-strong: rgb(15 23 42 / 0.14);
+
+  /* ---------------------------------------------------------------- 强调 */
+  --ui-accent: #0d9488;
+  --ui-accent-hover: #0f766e;
+  --ui-accent-soft: rgb(13 148 136 / 0.12);
+  --ui-accent-ring: rgb(13 148 136 / 0.34);
+  --ui-accent-contrast: #ffffff;
+  /* 渐变弧光（logo / 高亮条 / 进度） */
+  --ui-arc: linear-gradient(118deg, #5eead4 0%, #22d3ee 42%, #818cf8 100%);
+
+  /* ---------------------------------------------------------------- 语义色 */
+  --ui-success: #059669;
+  --ui-success-soft: rgb(5 150 105 / 0.12);
+  --ui-warning: #d97706;
+  --ui-warning-soft: rgb(217 119 6 / 0.14);
+  --ui-danger: #dc2626;
+  --ui-danger-soft: rgb(220 38 38 / 0.12);
+  --ui-info: #2563eb;
+  --ui-info-soft: rgb(37 99 235 / 0.12);
+
+  /* ---------------------------------------------------------------- 阴影 */
+  /* 双层：近距离接触影 + 远距离扩散影，模拟真实光照 */
+  --ui-shadow-1: 0 1px 2px rgb(15 23 42 / 0.06), 0 1px 1px rgb(15 23 42 / 0.04);
+  --ui-shadow-2: 0 4px 12px -2px rgb(15 23 42 / 0.10), 0 2px 4px -2px rgb(15 23 42 / 0.06);
+  --ui-shadow-3: 0 14px 34px -12px rgb(15 23 42 / 0.20), 0 4px 10px -6px rgb(15 23 42 / 0.10);
+  --ui-shadow-4: 0 34px 64px -28px rgb(15 23 42 / 0.30), 0 12px 24px -18px rgb(15 23 42 / 0.16);
+  --ui-shadow-glow: 0 0 0 1px rgb(13 148 136 / 0.18), 0 12px 30px -14px rgb(13 148 136 / 0.42);
+
+  /* ---------------------------------------------------------------- 圆角 */
+  --ui-r-xs: 8px;
+  --ui-r-sm: 10px;
+  --ui-r-md: 14px;
+  --ui-r-lg: 18px;
+  --ui-r-xl: 24px;
+  --ui-r-2xl: 32px;
+  --ui-r-3xl: 40px;
+  --ui-r-pill: 999px;
+
+  /* ---------------------------------------------------------------- 间距（8pt 网格） */
+  --ui-s-1: 4px;
+  --ui-s-2: 8px;
+  --ui-s-3: 12px;
+  --ui-s-4: 16px;
+  --ui-s-5: 20px;
+  --ui-s-6: 24px;
+  --ui-s-8: 32px;
+  --ui-s-10: 40px;
+  --ui-s-12: 48px;
+  --ui-s-16: 64px;
+  --ui-s-20: 80px;
+
+  /* ---------------------------------------------------------------- 字体 */
+  --ui-font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI Variable',
+    'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei',
+    system-ui, sans-serif;
+  --ui-font-mono: 'SF Mono', ui-monospace, 'JetBrains Mono', 'Cascadia Code', Menlo,
+    Consolas, monospace;
+
+  --ui-fs-2xs: 11px;
+  --ui-fs-xs: 12px;
+  --ui-fs-sm: 13px;
+  --ui-fs-md: 14px;
+  --ui-fs-lg: 16px;
+  --ui-fs-xl: 19px;
+  --ui-fs-2xl: 24px;
+  --ui-fs-3xl: 31px;
+  --ui-fs-4xl: 40px;
+  --ui-fs-5xl: 52px;
+
+  --ui-lh-tight: 1.16;
+  --ui-lh-snug: 1.34;
+  --ui-lh-normal: 1.6;
+
+  /* ---------------------------------------------------------------- 动效 */
+  --ui-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ui-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ui-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ui-dur-fast: 120ms;
+  --ui-dur-base: 200ms;
+  --ui-dur-slow: 380ms;
+
+  /* ---------------------------------------------------------------- 布局 */
+  --ui-rail-w: 68px;
+  --ui-panel-w: 252px;
+  --ui-topbar-h: 60px;
+  --ui-content-max: 1440px;
+
+  /* 背景色块强度（ShellBackdrop 消费） */
+  --ui-blob-opacity: 0.44;
+
+  /* ---------------------------------------------------------------- 指针镜面高光 */
+  --ui-mx: 22%;
+  --ui-my: 6%;
+}
+
+/* ============================================================ 暗色主题 */
+html.dark,
+html[data-theme='dark'] {
+  color-scheme: dark;
+
+  --ui-canvas: #070b14;
+  --ui-canvas-deep: #04070d;
+  --ui-canvas-tint-1: #0f4a45;
+  --ui-canvas-tint-2: #16306e;
+  --ui-canvas-tint-3: #2f1c5e;
+  --ui-canvas-tint-4: #5a1030;
+
+  --ui-glass-rgb: 11 17 31;
+  --ui-glass-strong-rgb: 13 20 36;
+  --ui-glass-soft-rgb: 11 17 31;
+
+  --ui-glass-alpha: 0.52;
+  --ui-glass-strong-alpha: 0.64;
+  --ui-glass-soft-alpha: 0.34;
+
+  --ui-glass-blur: 30px;
+  --ui-glass-strong-blur: 46px;
+  --ui-glass-sat: 170%;
+  --ui-glass-bright: 118%;
+
+  --ui-edge: rgb(255 255 255 / 0.14);
+  --ui-edge-strong: rgb(255 255 255 / 0.22);
+  --ui-edge-inner: rgb(255 255 255 / 0.10);
+  --ui-edge-shade: rgb(0 0 0 / 0.36);
+
+  --ui-text: #f5f8fc;
+  --ui-text-soft: #dbe3ee;
+  --ui-text-muted: #b4c1d4;
+  --ui-text-faint: #8b9bb1;
+  --ui-text-inverse: #0b1220;
+
+  --ui-line: rgb(255 255 255 / 0.11);
+  --ui-line-soft: rgb(255 255 255 / 0.06);
+  --ui-line-strong: rgb(255 255 255 / 0.19);
+
+  --ui-accent: #2dd4bf;
+  --ui-accent-hover: #5eead4;
+  --ui-accent-soft: rgb(45 212 191 / 0.16);
+  --ui-accent-ring: rgb(45 212 191 / 0.42);
+  --ui-accent-contrast: #04211d;
+
+  --ui-success: #34d399;
+  --ui-success-soft: rgb(52 211 153 / 0.16);
+  --ui-warning: #fbbf24;
+  --ui-warning-soft: rgb(251 191 36 / 0.16);
+  --ui-danger: #f87171;
+  --ui-danger-soft: rgb(248 113 113 / 0.16);
+  --ui-info: #60a5fa;
+  --ui-info-soft: rgb(96 165 250 / 0.16);
+
+  --ui-shadow-1: 0 1px 2px rgb(0 0 0 / 0.40);
+  --ui-shadow-2: 0 4px 14px -2px rgb(0 0 0 / 0.50), 0 2px 4px -2px rgb(0 0 0 / 0.36);
+  --ui-shadow-3: 0 16px 38px -14px rgb(0 0 0 / 0.66), 0 4px 12px -8px rgb(0 0 0 / 0.44);
+  --ui-shadow-4: 0 40px 72px -30px rgb(0 0 0 / 0.78), 0 14px 28px -20px rgb(0 0 0 / 0.56);
+  --ui-hairline: rgb(255 255 255 / 0.12);
+
+  --ui-shadow-glow: 0 0 0 1px rgb(45 212 191 / 0.26), 0 14px 34px -16px rgb(45 212 191 / 0.50);
+
+  --ui-blob-opacity: 0.38;
+}
+
+/* 高对比 / 减少透明偏好 */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --ui-glass-alpha: 0.94;
+    --ui-glass-strong-alpha: 0.98;
+    --ui-glass-soft-alpha: 0.90;
+    --ui-glass-blur: 0px;
+  }
+  html.dark,
+  html[data-theme='dark'] {
+    --ui-glass-alpha: 0.90;
+    --ui-glass-strong-alpha: 0.96;
+    --ui-glass-soft-alpha: 0.86;
+    --ui-glass-blur: 0px;
+  }
+}

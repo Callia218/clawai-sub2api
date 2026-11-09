@@ -1,0 +1,421 @@
+<template>
+  <form class="auth-form pending-oauth-form" :aria-busy="isSubmitting || isSendingCode" @submit.prevent="handleSubmit">
+    <label class="input-label" :for="`${testIdPrefix}-account-email`">{{ t('auth.emailLabel') }}</label>
+    <input
+      :id="`${testIdPrefix}-account-email`"
+      autocomplete="email"
+      v-model="email"
+      :data-testid="`${testIdPrefix}-create-account-email`"
+      type="email"
+      class="input glass-control w-full"
+      :placeholder="t('auth.emailPlaceholder')"
+      :disabled="isSubmitting || isSendingCode"
+    />
+    <label class="input-label" :for="`${testIdPrefix}-account-password`">{{ t('auth.passwordLabel') }}</label>
+    <input
+      :id="`${testIdPrefix}-account-password`"
+      autocomplete="new-password"
+      v-model="password"
+      :data-testid="`${testIdPrefix}-create-account-password`"
+      type="password"
+      class="input glass-control w-full"
+      :placeholder="t('auth.passwordPlaceholder')"
+      :disabled="isSubmitting"
+    />
+    <div v-if="captchaEnabled" class="space-y-2">
+      <TurnstileWidget
+        ref="turnstileRef"
+        :site-key="turnstileSiteKey"
+        :turnstile-enabled="turnstileEnabled"
+        :turnstile-site-key="turnstileSiteKey"
+        :tencent-enabled="tencentCaptchaEnabled"
+        :tencent-app-id="tencentCaptchaAppId"
+        :tencent-region="tencentCaptchaRegion"
+        :aliyun-enabled="aliyunCaptchaEnabled"
+        :aliyun-scene-id="aliyunCaptchaSceneId"
+        :aliyun-prefix="aliyunCaptchaPrefix"
+        :aliyun-region="aliyunCaptchaRegion"
+        @verify="onTurnstileVerify"
+        @expire="onTurnstileExpire"
+        @error="onTurnstileError"
+      />
+    </div>
+    <label v-if="emailVerifyEnabled" class="input-label" :for="`${testIdPrefix}-account-verify-code`">{{ t('auth.verificationCode') }}</label>
+    <div v-if="emailVerifyEnabled" class="pending-code-row">
+      <input
+        v-model="verifyCode"
+        :id="`${testIdPrefix}-account-verify-code`"
+        autocomplete="one-time-code"
+        :data-testid="`${testIdPrefix}-create-account-verify-code`"
+        type="text"
+        inputmode="numeric"
+        maxlength="6"
+        class="input glass-control min-w-0 flex-1"
+        placeholder="123456"
+        :disabled="isSubmitting"
+      />
+      <button
+        :data-testid="`${testIdPrefix}-create-account-send-code`"
+        type="button"
+        class="btn glass-control btn-secondary shrink-0"
+        :disabled="isSubmitting || isSendingCode || countdown > 0 || !email.trim() || (turnstileEnabled && !turnstileToken)"
+        @click="handleSendCode"
+      >
+        {{
+          isSendingCode
+            ? t('auth.sendingCode')
+            : countdown > 0
+              ? t('auth.resendCountdown', { countdown })
+              : t('auth.sendCode')
+        }}
+      </button>
+    </div>
+    <p v-if="emailVerifyEnabled && sendCodeSuccess" class="pending-code-success" role="status">
+      {{ t('auth.codeSentSuccess') }}
+    </p>
+    <p v-else-if="emailVerifyEnabled" class="pending-help">
+      {{ t('auth.verificationCodeHint') }}
+    </p>
+    <label v-if="invitationCodeEnabled" class="input-label" :for="`${testIdPrefix}-account-invitation`">{{ t('auth.invitationCodeLabel') }}</label>
+    <input
+      :id="`${testIdPrefix}-account-invitation`"
+      autocomplete="off"
+      v-if="invitationCodeEnabled"
+      v-model="invitationCode"
+      :data-testid="`${testIdPrefix}-create-account-invitation-code`"
+      type="text"
+      class="input glass-control w-full"
+      :placeholder="t('auth.invitationCodePlaceholder')"
+      :disabled="isSubmitting"
+    />
+    <button
+      :data-testid="`${testIdPrefix}-create-account-submit`"
+      type="button"
+      class="btn glass-control btn-primary w-full"
+      :disabled="isSubmitting || !email.trim() || password.length < 6 || (invitationCodeEnabled && !invitationCode.trim()) || (turnstileEnabled && !turnstileToken)"
+      @click="handleSubmit"
+    >
+      {{ isSubmitting ? t('common.processing') : t('auth.createAccount') }}
+    </button>
+    <button
+      type="button"
+      class="btn glass-control btn-secondary w-full"
+      :disabled="isSubmitting"
+      @click="emitSwitchToBind"
+    >
+      {{ t('auth.alreadyHaveAccount') }}
+    </button>
+  </form>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import TurnstileWidget from '@/components/CaptchaChallenge.vue'
+import { getPublicSettings, sendPendingOAuthVerifyCode } from '@/api/auth'
+import { useAppStore } from '@/stores'
+
+export type PendingOAuthCreateAccountPayload = {
+  email: string
+  password: string
+  verifyCode: string
+  turnstileToken?: string
+  tencentCaptchaTicket?: string
+  tencentCaptchaRandstr?: string
+  invitationCode?: string
+}
+
+const props = defineProps<{
+  initialEmail: string
+  testIdPrefix: string
+  isSubmitting: boolean
+  errorMessage?: string
+}>()
+
+const emit = defineEmits<{
+  submit: [payload: PendingOAuthCreateAccountPayload]
+  switchToBind: [email: string]
+}>()
+
+const { t } = useI18n()
+const appStore = useAppStore()
+
+const email = ref('')
+const password = ref('')
+const verifyCode = ref('')
+const invitationCode = ref('')
+const isSendingCode = ref(false)
+const sendCodeError = ref('')
+const sendCodeSuccess = ref(false)
+const countdown = ref(0)
+const invitationCodeEnabled = ref(false)
+const emailVerifyEnabled = ref(true)
+const turnstileEnabled = ref(false)
+const turnstileSiteKey = ref('')
+const tencentCaptchaEnabled = ref(false)
+const tencentCaptchaAppId = ref('')
+const tencentCaptchaRegion = ref('cn')
+const aliyunCaptchaEnabled = ref(false)
+const aliyunCaptchaSceneId = ref('')
+const aliyunCaptchaPrefix = ref('')
+const aliyunCaptchaRegion = ref('cn')
+const turnstileToken = ref('')
+const tencentCaptchaRandstr = ref('')
+const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
+const aliyunCaptchaReady = computed(
+  () =>
+    aliyunCaptchaEnabled.value &&
+    Boolean(aliyunCaptchaSceneId.value) &&
+    Boolean(aliyunCaptchaPrefix.value)
+)
+// 动作触发式验证码（腾讯/阿里云）：发送验证码、提交时弹窗验证
+const actionCaptchaEnabled = computed(
+  () =>
+    (tencentCaptchaEnabled.value && Boolean(tencentCaptchaAppId.value)) ||
+    aliyunCaptchaReady.value
+)
+const captchaEnabled = computed(
+  () =>
+    (turnstileEnabled.value && Boolean(turnstileSiteKey.value)) || actionCaptchaEnabled.value
+)
+
+let countdownTimer: ReturnType<typeof setInterval> | null = null
+let disposed = false
+
+watch(
+  () => props.initialEmail,
+  value => {
+    email.value = value || ''
+  },
+  { immediate: true }
+)
+
+watch(sendCodeError, value => {
+  if (value) {
+    appStore.showError(value)
+  }
+})
+
+watch(
+  () => props.errorMessage,
+  value => {
+    if (value) {
+      appStore.showError(value)
+      if (captchaEnabled.value) {
+        resetTurnstile()
+      }
+    }
+  }
+)
+
+function clearCountdown() {
+  if (countdownTimer) {
+    clearInterval(countdownTimer)
+    countdownTimer = null
+  }
+}
+
+function startCountdown(seconds: number) {
+  clearCountdown()
+  countdown.value = Math.max(0, seconds)
+
+  if (countdown.value <= 0) {
+    return
+  }
+
+  countdownTimer = setInterval(() => {
+    if (countdown.value <= 1) {
+      countdown.value = 0
+      clearCountdown()
+      return
+    }
+
+    countdown.value -= 1
+  }, 1000)
+}
+
+function getRequestErrorMessage(error: unknown, fallback: string): string {
+  const err = error as { message?: string; response?: { data?: { detail?: string; message?: string } } }
+  return err.response?.data?.detail || err.response?.data?.message || err.message || fallback
+}
+
+function resetTurnstile() {
+  turnstileToken.value = ''
+  tencentCaptchaRandstr.value = ''
+  turnstileRef.value?.reset()
+}
+
+function onTurnstileVerify(token: string, randstr = '') {
+  turnstileToken.value = token
+  tencentCaptchaRandstr.value = randstr
+  sendCodeError.value = ''
+}
+
+function onTurnstileExpire() {
+  turnstileToken.value = ''
+  tencentCaptchaRandstr.value = ''
+  sendCodeError.value = t('auth.turnstileExpired')
+}
+
+function onTurnstileError() {
+  turnstileToken.value = ''
+  tencentCaptchaRandstr.value = ''
+  sendCodeError.value = t('auth.turnstileFailed')
+}
+
+async function acquireActionProof(): Promise<boolean> {
+  if (!actionCaptchaEnabled.value) return true
+
+  const proof = await turnstileRef.value?.verifyAction()
+  if (!proof) return false
+
+  turnstileToken.value = proof.token
+  tencentCaptchaRandstr.value = proof.randstr
+  return true
+}
+
+async function handleSendCode() {
+  const trimmedEmail = email.value.trim()
+  if (!trimmedEmail) {
+    return
+  }
+
+  if (turnstileEnabled.value && !turnstileToken.value) {
+    sendCodeError.value = t('auth.completeVerification')
+    return
+  }
+
+  if (!(await acquireActionProof())) {
+    return
+  }
+
+  isSendingCode.value = true
+  sendCodeError.value = ''
+  sendCodeSuccess.value = false
+
+  try {
+    const response = await sendPendingOAuthVerifyCode({
+      email: trimmedEmail,
+      turnstile_token:
+        turnstileEnabled.value || aliyunCaptchaEnabled.value ? turnstileToken.value : undefined,
+      tencent_captcha_ticket: tencentCaptchaEnabled.value ? turnstileToken.value : undefined,
+      tencent_captcha_randstr: tencentCaptchaEnabled.value ? tencentCaptchaRandstr.value : undefined
+    })
+    if (disposed) return
+    sendCodeSuccess.value = true
+    startCountdown(response.countdown)
+  } catch (error: unknown) {
+    sendCodeError.value = getRequestErrorMessage(error, t('auth.sendCodeFailed'))
+  } finally {
+    if (captchaEnabled.value) {
+      resetTurnstile()
+    }
+    isSendingCode.value = false
+  }
+}
+
+async function handleSubmit() {
+  const trimmedEmail = email.value.trim()
+  if (!trimmedEmail || password.value.length < 6) {
+    return
+  }
+
+  // Turnstile 票据一次性：发送验证码已消耗上一枚，reset 后要等新票据回调。
+  // 缺票时不能提交——create-account 端点会校验验证码，空 token 直接被判失败。
+  // 表单的隐式提交（输入框回车）绕得过按钮的 disabled，所以这里必须再挡一次。
+  if (turnstileEnabled.value && !turnstileToken.value) {
+    sendCodeError.value = t('auth.completeVerification')
+    return
+  }
+
+  if (!(await acquireActionProof())) {
+    return
+  }
+
+  emit('submit', {
+    email: trimmedEmail,
+    password: password.value,
+    verifyCode: emailVerifyEnabled.value ? verifyCode.value.trim() : '',
+    ...((turnstileEnabled.value || aliyunCaptchaEnabled.value) && turnstileToken.value
+      ? { turnstileToken: turnstileToken.value }
+      : {}),
+    ...(tencentCaptchaEnabled.value && turnstileToken.value
+      ? {
+          tencentCaptchaTicket: turnstileToken.value,
+          tencentCaptchaRandstr: tencentCaptchaRandstr.value
+        }
+      : {}),
+    invitationCode: invitationCode.value.trim() || undefined
+  })
+
+  if (actionCaptchaEnabled.value) {
+    resetTurnstile()
+  }
+}
+
+function emitSwitchToBind() {
+  emit('switchToBind', email.value.trim())
+}
+
+onMounted(async () => {
+  try {
+    const settings = await getPublicSettings()
+    invitationCodeEnabled.value = settings.invitation_code_enabled === true
+    emailVerifyEnabled.value = settings.email_verify_enabled !== false
+    turnstileEnabled.value = settings.turnstile_enabled === true
+    turnstileSiteKey.value = settings.turnstile_site_key || ''
+    tencentCaptchaEnabled.value = settings.tencent_captcha_enabled === true
+    tencentCaptchaAppId.value = settings.tencent_captcha_app_id || ''
+    tencentCaptchaRegion.value = settings.tencent_captcha_region || 'cn'
+    aliyunCaptchaEnabled.value = settings.aliyun_captcha_enabled === true
+    aliyunCaptchaSceneId.value = settings.aliyun_captcha_scene_id || ''
+    aliyunCaptchaPrefix.value = settings.aliyun_captcha_prefix || ''
+    aliyunCaptchaRegion.value = settings.aliyun_captcha_region || 'cn'
+  } catch {
+    invitationCodeEnabled.value = false
+    emailVerifyEnabled.value = true
+    turnstileEnabled.value = false
+    turnstileSiteKey.value = ''
+    tencentCaptchaEnabled.value = false
+    tencentCaptchaAppId.value = ''
+    tencentCaptchaRegion.value = 'cn'
+    aliyunCaptchaEnabled.value = false
+    aliyunCaptchaSceneId.value = ''
+    aliyunCaptchaPrefix.value = ''
+    aliyunCaptchaRegion.value = 'cn'
+  }
+})
+
+onUnmounted(() => {
+  disposed = true
+  clearCountdown()
+})
+</script>
+
+<style scoped>
+.pending-oauth-form { min-width: 0; }
+.pending-oauth-form :is(.btn, .input) {
+  min-height: 2.75rem;
+  border: 1px solid var(--glass-control-edge);
+  background: var(--glass-control-fill);
+  color: var(--glass-control-ink);
+  box-shadow: var(--glass-control-shadow);
+  -webkit-backdrop-filter: var(--glass-control-blur);
+  backdrop-filter: var(--glass-control-blur);
+}
+.pending-oauth-form .btn-primary { color: var(--glass-action-ink); }
+.pending-oauth-form .input { font-size: 1rem; }
+.pending-oauth-form .btn { touch-action: manipulation; }
+.pending-oauth-form :is(.btn, .input):focus-visible { outline: 3px solid var(--glass-accent, #0071e3); outline-offset: 3px; }
+.pending-oauth-form :is(.btn, .input):disabled { opacity: .5; cursor: not-allowed; }
+@media (hover: hover) and (pointer: fine) {
+  .pending-oauth-form .btn:hover:not(:disabled) { background: var(--glass-control-hover); }
+}
+.pending-oauth-form .input-label { margin-bottom: -.5rem; }
+.pending-code-row { display: flex; flex-wrap: wrap; gap: .75rem; }
+.pending-code-row .input { min-width: min(100%, 8rem); flex: 1 1 8rem; }
+.pending-code-row .btn { flex: 0 1 auto; width: auto; }
+.pending-code-success { color: #18734c; font-size: .875rem; line-height: 1.6; }
+.dark .pending-code-success { color: #8ae0b8; }
+.pending-help { color: var(--glass-muted, #53647a); font-size: .8125rem; line-height: 1.6; }
+</style>

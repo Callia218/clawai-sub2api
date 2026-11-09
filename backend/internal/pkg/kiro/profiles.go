@@ -1,0 +1,121 @@
+package kiro
+
+import (
+	"encoding/json"
+	"fmt"
+	"regexp"
+	"strings"
+)
+
+// profileArnPattern 是 AWS 自己给出的 profileArn 校验规则——真实账号测试时
+// 直接从 AWS 的 400 ValidationException 里原样抄出来的（不是猜的）：
+//
+//	arn:[-.a-z0-9]{1,63}:(codewhisperer|transform):[-.a-z0-9]{1,63}:\d{12}:profile/([a-zA-Z0-9]){12}
+var profileArnPattern = regexp.MustCompile(`^arn:[-.a-z0-9]{1,63}:(codewhisperer|transform):[-.a-z0-9]{1,63}:\d{12}:profile/[a-zA-Z0-9]{12}$`)
+
+// IsValidProfileArn 判断一个字符串是否是合法形态的 Kiro profile ARN。
+func IsValidProfileArn(arn string) bool {
+	return profileArnPattern.MatchString(strings.TrimSpace(arn))
+}
+
+// profileArnRegionPattern 与 profileArnPattern 同源，额外捕获 region 分段。
+var profileArnRegionPattern = regexp.MustCompile(`^arn:[-.a-z0-9]{1,63}:(?:codewhisperer|transform):([-.a-z0-9]{1,63}):\d{12}:profile/[a-zA-Z0-9]{12}$`)
+
+// RegionFromProfileArn 从合法的 profile ARN 里解析出它所在的区域。
+//
+// 背景：参考实现 Kiro-Go 明确文档记录过这个坑——账号 credentials 里存的
+// region 是 SSO 登录时的授权/OIDC 区域，跟这个 profile 实际所在的数据面
+// 区域可能不是同一个（其 regionalizeURLForRegion 的注释原话："account.Region
+// 是认证区域，可能和 profile 实际所在区域不一致"）。多数场景下两者凑巧相同
+// 所以"能跑"，一旦不一致，用授权区域拼数据面主机会打到错误的区域，且没有
+// 任何症状直接指向"region 配错了"这个根因——调用方（kiroDataPlaneRegion）
+// 应该优先信任这里解析出的区域。
+//
+// 只在 arn 本身完整合法时才提取 region，不用一个更宽松的正则"尽量"提取——
+// 避免把一个格式错误、可能被篡改的字符串里的任意子串当成合法区域名拼进
+// 出站请求的 URL。
+func RegionFromProfileArn(arn string) (string, bool) {
+	m := profileArnRegionPattern.FindStringSubmatch(strings.TrimSpace(arn))
+	if m == nil {
+		return "", false
+	}
+	region, err := NormalizeRegion(m[1])
+	return region, err == nil
+}
+
+// ListProfilesHostFor 返回 ListAvailableProfiles 该打去哪个 host。
+//
+// CodeWhisperer 的 REST host 只在 us-east-1 存在；其它区域用区域化的
+// Amazon Q host（q.<region>.amazonaws.com）提供同一个操作——参考实现
+// Kiro-Go（proxy/kiro_api.go 的 regionalizeURLForRegion）证实了这一点，
+// 不是我们自己猜的映射关系。
+func ListProfilesHostFor(region string) string {
+	var err error
+	region, err = NormalizeRegion(region)
+	if err != nil {
+		return ""
+	}
+	if region == "us-east-1" {
+		return "https://codewhisperer.us-east-1.amazonaws.com"
+	}
+	return fmt.Sprintf("https://q.%s.amazonaws.com", region)
+}
+
+// BuildListProfilesURL 拼出完整的 ListAvailableProfiles 地址。
+func BuildListProfilesURL(region string) string {
+	return ListProfilesHostFor(region) + "/ListAvailableProfiles"
+}
+
+// BuildListProfilesRequestBody 构造分页请求体。
+//
+// 不带 maxResults 字段——真实账号测试证实带了这个字段（不管是 JSON 数字
+// 还是字符串）会被 AWS 拒成 400 REQUEST_BODY_INVALID/"Improperly formed
+// request."，参考实现 Kiro-Go 的 map[string]interface{}{"maxResults":
+// pageSize} 这个细节在我们的真实账号上是错的（或者 AWS 之后收紧了校验）。
+// 只有 nextToken 时才带这个字段（分页第二页起），首页请求体是空对象 {}。
+func BuildListProfilesRequestBody(nextToken string) ([]byte, error) {
+	body := map[string]any{}
+	if nextToken != "" {
+		body["nextToken"] = nextToken
+	}
+	return json.Marshal(body)
+}
+
+// KiroProfile 是 ListAvailableProfiles 返回的一条可选 profile。
+type KiroProfile struct {
+	ARN  string
+	Name string
+}
+
+// ListProfilesResponse 是 ListAvailableProfiles 一页的解析结果。
+type ListProfilesResponse struct {
+	Profiles  []KiroProfile
+	NextToken string
+}
+
+// ParseListProfilesResponse 解析 ListAvailableProfiles 响应。
+//
+// 格式不对的单条 profile（ARN 不满足 profileArnPattern）直接丢弃，不让
+// 一条脏数据打断整批发现——上游返回什么由 AWS 决定，本地只做防御性过滤。
+func ParseListProfilesResponse(raw []byte) (*ListProfilesResponse, error) {
+	var r struct {
+		Profiles []struct {
+			ARN  string `json:"arn"`
+			Name string `json:"profileName"`
+		} `json:"profiles"`
+		NextToken string `json:"nextToken"`
+	}
+	if err := json.Unmarshal(raw, &r); err != nil {
+		return nil, fmt.Errorf("kiro: decode ListAvailableProfiles response: %w", err)
+	}
+
+	out := &ListProfilesResponse{NextToken: strings.TrimSpace(r.NextToken)}
+	for _, p := range r.Profiles {
+		arn := strings.TrimSpace(p.ARN)
+		if !IsValidProfileArn(arn) {
+			continue
+		}
+		out.Profiles = append(out.Profiles, KiroProfile{ARN: arn, Name: strings.TrimSpace(p.Name)})
+	}
+	return out, nil
+}

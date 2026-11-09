@@ -1,0 +1,335 @@
+import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('@/api/admin/accounts', () => ({
+  getAntigravityDefaultModelMapping: vi.fn()
+}))
+
+import { buildModelMappingObject, getModelsByPlatform, getPresetMappingsByPlatform, splitModelMappingObject } from '../useModelWhitelist'
+import { BUILTIN_PLATFORM_CATALOG, resetPlatformCatalog, setPlatformCatalog } from '@/constants/platformCatalog'
+
+describe('useModelWhitelist', () => {
+  it('平台清单中没有内置模型列表的多协议供应商不预填白名单', () => {
+    setPlatformCatalog({
+      ...BUILTIN_PLATFORM_CATALOG,
+      platforms: [
+        ...BUILTIN_PLATFORM_CATALOG.platforms,
+        {
+          id: 'acme_router',
+          display_name: 'Acme Router',
+          gateway: 'openai',
+          cn_provider: false,
+          multi_protocol: {
+            default_mode: 'standard',
+            routing: 'by_model',
+            modes: [{ mode: 'standard', base_urls: { chat_completions: 'https://api.acme-router.example/v1' } }]
+          }
+        }
+      ]
+    })
+    try {
+      expect(getModelsByPlatform('acme_router')).toEqual([])
+      expect(getModelsByPlatform('kimi').length).toBeGreaterThan(0)
+      // 非多协议供应商的未知平台维持原有回退。
+      expect(getModelsByPlatform('bedrock')).toEqual(getModelsByPlatform('anthropic'))
+    } finally {
+      resetPlatformCatalog()
+    }
+  })
+
+  it('openai 模型列表包含 GPT-5.4 官方快照', () => {
+    const models = getModelsByPlatform('openai')
+
+    expect(models).toContain('gpt-5.4')
+    expect(models).toContain('gpt-5.4-mini')
+    expect(models).toContain('gpt-5.4-2026-03-05')
+    expect(models).toContain('codex-auto-review')
+    expect(models).toContain('gpt-5.6')
+    expect(models).toContain('gpt-6')
+    expect(models).toContain('gpt-6-astra')
+    expect(models).toContain('gpt-6.1-sol')
+    expect(models).toContain('gpt-6.1-terra')
+    expect(models).toContain('gpt-6-sol')
+    expect(models).toContain('gpt-6-luna')
+    expect(models).toContain('gpt-image-2.6-flare')
+    expect(models).toContain('gpt-image-2.6-sunburst')
+  })
+
+  it('openai 预设映射包含 GPT-6 别名和 Astra', () => {
+    expect(getPresetMappingsByPlatform('openai')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'GPT-6.1 Sol', from: 'gpt-6.1-sol', to: 'gpt-6.1-sol' }),
+      expect.objectContaining({ label: 'GPT-6.1 Terra', from: 'gpt-6.1-terra', to: 'gpt-6.1-terra' }),
+      expect.objectContaining({ label: 'GPT-6', from: 'gpt-6', to: 'gpt-6' }),
+      expect.objectContaining({ label: 'GPT-6 Astra', from: 'gpt-6-astra', to: 'gpt-6-astra' })
+    ]))
+  })
+
+  it('openai 模型列表不再暴露已下线的 ChatGPT 登录 Codex 模型', () => {
+    const models = getModelsByPlatform('openai')
+
+    expect(models).not.toContain('gpt-5')
+    expect(models).not.toContain('gpt-5.1')
+    expect(models).not.toContain('gpt-5.1-codex')
+    expect(models).not.toContain('gpt-5.1-codex-max')
+    expect(models).not.toContain('gpt-5.1-codex-mini')
+    expect(models).not.toContain('gpt-5.2-codex')
+  })
+
+  it('antigravity 模型列表包含图片模型兼容项', () => {
+    const models = getModelsByPlatform('antigravity')
+
+    expect(models).toContain('gemini-2.5-flash-image')
+    expect(models).toContain('gemini-3.1-flash-image')
+    expect(models).toContain('gemini-3-pro-image')
+  })
+
+  it('Claude 模型列表包含新发布的 Claude 模型', () => {
+    expect(getModelsByPlatform('claude')).toContain('claude-fable-5-1')
+    expect(getModelsByPlatform('antigravity')).toContain('claude-fable-5-1')
+    expect(getModelsByPlatform('claude')).toContain('claude-fable-5')
+    expect(getModelsByPlatform('antigravity')).toContain('claude-fable-5')
+    expect(getModelsByPlatform('claude')).toContain('claude-opus-5-5')
+    expect(getModelsByPlatform('antigravity')).not.toContain('claude-opus-5-5')
+    expect(getModelsByPlatform('claude')).toContain('claude-sonnet-5-5')
+    expect(getModelsByPlatform('antigravity')).not.toContain('claude-sonnet-5-5')
+    expect(getModelsByPlatform('claude')).toContain('claude-opus-4-8')
+    expect(getModelsByPlatform('antigravity')).toContain('claude-opus-4-8')
+  })
+
+  it('Claude Sonnet 5.5 预设使用各平台的官方模型 ID', () => {
+    expect(getPresetMappingsByPlatform('claude')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'Sonnet 5.5', from: 'claude-sonnet-5-5', to: 'claude-sonnet-5-5' })
+    ]))
+    expect(getPresetMappingsByPlatform('bedrock')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'Sonnet 5.5', from: 'claude-sonnet-5-5', to: 'global.anthropic.claude-sonnet-5-5' })
+    ]))
+  })
+
+  it('Kiro 列表与预设包含 Opus 5.5 / Sonnet 5.5 的点号形态', () => {
+    expect(getModelsByPlatform('kiro')).toEqual(expect.arrayContaining(['claude-opus-5.5', 'claude-sonnet-5.5']))
+    expect(getModelsByPlatform('kiro')).not.toContain('claude-haiku-5.5')
+    expect(getPresetMappingsByPlatform('kiro')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'Opus 5.5', from: 'claude-opus-5.5', to: 'claude-opus-5.5' }),
+      expect.objectContaining({ label: 'Sonnet 5.5', from: 'claude-sonnet-5.5', to: 'claude-sonnet-5.5' })
+    ]))
+  })
+
+  it('Claude 默认白名单保存后允许 Haiku 5.5，预设使用同一模型 ID', () => {
+    const models: string[] = getModelsByPlatform('anthropic')
+    const mapping: Record<string, string> | null = buildModelMappingObject('whitelist', models, [])
+
+    expect(mapping?.['claude-haiku-5-5']).toBe('claude-haiku-5-5')
+    expect(getPresetMappingsByPlatform('anthropic')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'Haiku 5.5', from: 'claude-haiku-5-5', to: 'claude-haiku-5-5' })
+    ]))
+  })
+
+  it('xAI 模型列表包含 Grok 4.5 官方模型和别名', () => {
+    const models = getModelsByPlatform('grok')
+
+    expect(models).toContain('grok-4.6')
+    expect(models).toContain('grok-4.6-latest')
+    expect(models).toContain('grok-4.5')
+    expect(models).toContain('grok-4.5-latest')
+    expect(models).toContain('grok-build-latest')
+    expect(models).toContain('grok-imagine-image-2.0')
+    expect(models).toContain('grok-imagine-video-1.5')
+  })
+
+  it('combined 模式支持 Grok 4.5 官方别名映射', () => {
+    const mapping = buildModelMappingObject(
+      'combined',
+      ['grok-4.5'],
+      [
+        { from: 'grok-latest', to: 'grok-4.5' },
+        { from: 'grok-4.5-latest', to: 'grok-4.5' },
+        { from: 'grok-build-latest', to: 'grok-4.5' }
+      ]
+    )
+
+    expect(mapping).toEqual({
+      'grok-4.5': 'grok-4.5',
+      'grok-latest': 'grok-4.5',
+      'grok-4.5-latest': 'grok-4.5',
+      'grok-build-latest': 'grok-4.5'
+    })
+  })
+
+  it('grok 模型列表包含 Composer 默认项和兼容别名', () => {
+    const models = getModelsByPlatform('grok')
+
+    expect(models).toContain('grok-composer-2.5-fast')
+    expect(models).not.toContain('grok-composer')
+    expect(models).toContain('composer-2.5')
+  })
+
+  it('gemini 模型列表包含原生生图模型', () => {
+    const models = getModelsByPlatform('gemini')
+
+    expect(models).toContain('gemini-3.1-flash-image')
+    expect(models).toContain('gemini-3-pro-image')
+    expect(models.indexOf('gemini-3.1-flash-image')).toBeLessThan(models.indexOf('gemini-3-flash'))
+    expect(models.indexOf('gemini-3-pro-image')).toBeLessThan(models.indexOf('gemini-3.5-flash'))
+  })
+
+  it('gemini 模型列表不含已停用的 2.x 模型与 Antigravity 档位别名', () => {
+    const models = getModelsByPlatform('gemini')
+
+    for (const model of ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-image', 'gemini-3-pro-preview']) {
+      expect(models).not.toContain(model)
+    }
+    for (const model of ['gemini-3.1-pro', 'gemini-3.1-pro-high', 'gemini-3.1-pro-low']) {
+      expect(models).not.toContain(model)
+    }
+    expect(models).toContain('gemini-3.8-flash')
+  })
+
+  it('antigravity 模型列表会把新的 Gemini 图片模型排在前面', () => {
+    const models = getModelsByPlatform('antigravity')
+
+    expect(models.indexOf('gemini-3.1-flash-image')).toBeLessThan(models.indexOf('gemini-2.5-flash'))
+    expect(models.indexOf('gemini-2.5-flash-image')).toBeLessThan(models.indexOf('gemini-2.5-flash-lite'))
+  })
+
+  it('antigravity 模型列表包含 Gemini 3.1 Pro 通用别名', () => {
+    const models = getModelsByPlatform('antigravity')
+
+    expect(models).toContain('gemini-3.1-pro')
+  })
+
+  it('Gemini 4 Argon 在 gemini 与 antigravity 平台使用对应真实模型 ID 与预设映射', () => {
+    expect(getModelsByPlatform('gemini')).toContain('gemini-4-argon')
+    const agModels = getModelsByPlatform('antigravity')
+    expect(agModels).not.toContain('gemini-4-argon')
+    expect(agModels).toContain('gemini-4-argon-high')
+    expect(agModels).toContain('gemini-4-argon-medium')
+    expect(agModels).toContain('gemini-4-argon-low')
+    expect(getPresetMappingsByPlatform('antigravity')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ from: 'gemini-4-argon', to: 'gemini-4-argon-high' }),
+      expect.objectContaining({ from: 'gemini-4-argon-high', to: 'gemini-4-argon-high' }),
+      expect.objectContaining({ from: 'gemini-4-argon-medium', to: 'gemini-4-argon-medium' }),
+      expect.objectContaining({ from: 'gemini-4-argon-low', to: 'gemini-4-argon-low' })
+    ]))
+  })
+
+  it('whitelist 模式会忽略通配符条目', () => {
+    const mapping = buildModelMappingObject('whitelist', ['claude-*', 'gemini-3.1-flash-image'], [])
+    expect(mapping).toEqual({
+      'gemini-3.1-flash-image': 'gemini-3.1-flash-image'
+    })
+  })
+
+  it('whitelist 模式会保留 GPT-5.4 官方快照的精确映射', () => {
+    const mapping = buildModelMappingObject('whitelist', ['gpt-5.4-2026-03-05'], [])
+
+    expect(mapping).toEqual({
+      'gpt-5.4-2026-03-05': 'gpt-5.4-2026-03-05'
+    })
+  })
+
+  it('whitelist keeps GPT-5.4 mini exact mappings', () => {
+    const mapping = buildModelMappingObject('whitelist', ['gpt-5.4-mini'], [])
+
+    expect(mapping).toEqual({
+      'gpt-5.4-mini': 'gpt-5.4-mini'
+    })
+  })
+
+  it('combined 模式会同时保留白名单身份映射和模型映射', () => {
+    const mapping = buildModelMappingObject(
+      'combined',
+      ['gpt-5.4', 'claude-*'],
+      [
+        { from: 'gpt-latest', to: 'gpt-5.4' },
+        { from: 'gpt-5.4', to: 'gpt-5.4-mini' }
+      ]
+    )
+
+    expect(mapping).toEqual({
+      'gpt-5.4': 'gpt-5.4-mini',
+      'gpt-latest': 'gpt-5.4'
+    })
+  })
+
+  // Kiro 模型限制功能（可选，参照 Antigravity 的账号级限制约定）：
+  // 与后端 kiro.DefaultModels()/kiroModelAliases（backend/internal/pkg/kiro/
+  // models.go）保持一致，只收录真实账号测试验证过的模型。
+  it('kiro 模型列表与后端 DefaultModels() 保持一致', () => {
+    const models = getModelsByPlatform('kiro')
+
+    // 2026-09-06：opus-4.5/4.6/4.7/4.8、sonnet-5 经真实账号权威接口
+    // ListAvailableModels 核实后加入，与后端 kiro.DefaultModels() 同步更新。
+    // 2026-10-11：opus-5.5/sonnet-5.5 依据 Kiro 官方公告加入，待真实账号核实。
+    // gpt-5.6-sol/terra/luna 走 /backend-api/codex/responses（Codex 端点），
+    // 与上面的 claude-* 系列从不混用，见 kiro_gateway_service.go 的
+    // kiroOutputProtocol 说明。
+    expect(models).toEqual([
+      'claude-sonnet-4.6',
+      'claude-sonnet-4.5',
+      'claude-sonnet-4',
+      'claude-haiku-4.5',
+      'claude-opus-5.5',
+      'claude-sonnet-5.5',
+      'claude-opus-5',
+      'claude-sonnet-5',
+      'claude-opus-4.8',
+      'claude-opus-4.7',
+      'claude-opus-4.6',
+      'claude-opus-4.5',
+      'gpt-5.6-sol',
+      'gpt-5.6-terra',
+      'gpt-5.6-luna'
+    ])
+  })
+
+  it('kiro 有自己的预设映射，不会回退到 anthropic 的连字符命名', () => {
+    const presets = getPresetMappingsByPlatform('kiro')
+
+    expect(presets.map(p => p.from)).toEqual(
+      expect.arrayContaining(['claude-sonnet-4.6', 'claude-haiku-4.5', 'claude-opus-5'])
+    )
+    // Anthropic 预设用的是连字符+日期后缀命名（如 claude-sonnet-4-5-20250929），
+    // Kiro 预设必须全部是 Kiro 规范点号形态，两者不能混用。
+    expect(presets.every(p => !p.from.includes('-2') && !/-\d-\d/.test(p.from))).toBe(true)
+  })
+
+  // 白名单模式产出 from===to 的身份映射，账号级限制会拿这份映射去匹配
+  // kiro.MapModel 转换后的规范模型名（见后端 forwardUpstream 的账号级
+  // 限制说明）——这里只验证前端产出的 mapping 形状本身是预期的身份映射，
+  // 不掺入连字符/日期后缀等客户端书写形式（那部分由后端 MapModel 统一
+  // 归一化，不是前端的职责）。
+  it('kiro whitelist 模式产出的身份映射覆盖选中的模型', () => {
+    const mapping = buildModelMappingObject('whitelist', ['claude-sonnet-4.6', 'claude-haiku-4.5'], [])
+
+    expect(mapping).toEqual({
+      'claude-sonnet-4.6': 'claude-sonnet-4.6',
+      'claude-haiku-4.5': 'claude-haiku-4.5'
+    })
+  })
+
+  it('combined mode retains a mapping when a whitelist entry has the same source', () => {
+    expect(buildModelMappingObject('combined', ['gpt-latest'], [{ from: 'gpt-latest', to: 'deepseek-chat' }])).toEqual({
+      'gpt-latest': 'deepseek-chat'
+    })
+  })
+
+  it('split mapping keeps only identity entries in the whitelist after reopening', () => {
+    expect(splitModelMappingObject({ 'gpt-latest': 'deepseek-chat', 'gpt-5.4': 'gpt-5.4' })).toEqual({
+      allowedModels: ['gpt-5.4'],
+      modelMappings: [{ from: 'gpt-latest', to: 'deepseek-chat' }]
+    })
+  })
+
+  it('splitModelMappingObject 会把身份映射还原成白名单，其余保留为映射', () => {
+    const parsed = splitModelMappingObject({
+      'gpt-5.4': 'gpt-5.4',
+      'gpt-latest': 'gpt-5.4',
+      ' ': 'gpt-empty',
+      broken: 123
+    })
+
+    expect(parsed).toEqual({
+      allowedModels: ['gpt-5.4'],
+      modelMappings: [{ from: 'gpt-latest', to: 'gpt-5.4' }]
+    })
+  })
+})

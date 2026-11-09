@@ -1,0 +1,31 @@
+export default {
+  label: '从想法，到结果',
+  example: '场景演示',
+  accessible: '自动演示三个 AI 工作场景：在终端中编写代码、将想法整理成计划，以及通过 API 获取回答。',
+  input: '描述任务', processing: '理解与处理', output: '呈现结果',
+  working: '正在处理', ready: '已完成', context: '项目上下文', result: '生成结果',
+  codex: {
+    title: '一句话，让代码开始生长。', subtitle: '从终端出发，把想法变成实现。',
+    command: 'codex "为项目添加一个 AI 助手"',
+    step1: '读取项目结构与上下文', step2: '编写对话组件与接口', step3: '整理变更与使用说明',
+    resultTitle: '你的 AI 助手，准备就绪。', resultNote: '交互界面与接入代码，一起就位。',
+    file1: '对话界面', file2: '流式接口', file3: '接入说明',
+    answer: '你好，今天想一起做些什么？', tag: '代码生成',
+  },
+  reasoning: {
+    title: '复杂的问题，清晰地展开。', subtitle: '让模型协助整理信息，形成下一步。',
+    command: '把一个产品想法，整理成可执行的计划。',
+    step1: '梳理目标与约束条件', step2: '比较实现路径与优先级', step3: '组织清晰的执行步骤',
+    resultTitle: '下一步，已经清晰。', resultNote: '从一个开放的问题，到有序的行动。',
+    item1: '定义核心场景', detail1: '聚焦用户首先需要完成的任务。',
+    item2: '搭建最小原型', detail2: '连接模型，验证关键交互。',
+    item3: '迭代与完善', detail3: '根据真实反馈打磨体验。', tag: '任务规划',
+  },
+  api: {
+    title: '一次调用，连接更多可能。', subtitle: '把模型能力，放进你自己的应用。',
+    command: 'curl "$BASE_URL/chat/completions"',
+    step1: '接收应用请求', step2: '调用所选模型', step3: '返回结构化响应',
+    resultTitle: '让结果，回到你的应用。', resultNote: '从 API 请求到回答，接入熟悉的工作流。',
+    answer: '让想法开始运行。', tag: 'API 接入',
+  },
+}

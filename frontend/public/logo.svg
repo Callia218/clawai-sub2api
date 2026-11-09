@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="t d">
+  <title id="t">clawAI</title>
+  <desc id="d">clawAI 标记：深空玻璃底 + 渐变弧光。</desc>
+
+  <defs>
+    <!-- 玻璃底：深空靛 → 墨青 -->
+    <linearGradient id="tile" x1="60" y1="36" x2="452" y2="476" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1c2740"/>
+      <stop offset=".45" stop-color="#141c2e"/>
+      <stop offset="1" stop-color="#0a0f1a"/>
+    </linearGradient>
+
+    <!-- 底部的青色辉光，让玻璃有"内部发光"感 -->
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse"
+                    gradientTransform="translate(150 402) rotate(-58) scale(392 372)">
+      <stop offset="0" stop-color="#39d9c4" stop-opacity=".42"/>
+      <stop offset=".55" stop-color="#2f7fb0" stop-opacity=".14"/>
+      <stop offset="1" stop-color="#2f7fb0" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- 弧光：薄荷 → 青 → 靛 -->
+    <linearGradient id="arc" x1="118" y1="96" x2="404" y2="420" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8ff3dd"/>
+      <stop offset=".42" stop-color="#4fd6e8"/>
+      <stop offset="1" stop-color="#5f7fe0"/>
+    </linearGradient>
+
+    <!-- 高光点 -->
+    <radialGradient id="spark" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse"
+                    gradientTransform="translate(372 168) scale(74)">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset=".5" stop-color="#c8fff2"/>
+      <stop offset="1" stop-color="#8ff3dd" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- 顶部边缘的受光 -->
+    <linearGradient id="rim" x1="90" y1="30" x2="430" y2="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".34"/>
+      <stop offset=".35" stop-color="#ffffff" stop-opacity=".06"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="170%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#050a14" flood-opacity=".55"/>
+    </filter>
+  </defs>
+
+  <!-- 玻璃底板 -->
+  <rect x="28" y="28" width="456" height="456" rx="118" fill="url(#tile)" filter="url(#soft)"/>
+  <rect x="28" y="28" width="456" height="456" rx="118" fill="url(#glow)"/>
+
+  <!-- 主体：一道带缺口的弧（C 形 / 爪形），末端收细 -->
+  <path d="M356 158
+           A 122 122 0 1 0 356 354"
+        fill="none" stroke="url(#arc)" stroke-width="52" stroke-linecap="round"/>
+
+  <!-- 弧内侧的次级弧，制造"厚度/层叠"感 -->
+  <path d="M330 196
+           A 84 84 0 1 0 330 316"
+        fill="none" stroke="#8ff3dd" stroke-opacity=".26" stroke-width="16" stroke-linecap="round"/>
+
+  <!-- 弧末端的高光点 -->
+  <circle cx="366" cy="164" r="26" fill="url(#spark)"/>
+  <circle cx="366" cy="164" r="13" fill="#ffffff" fill-opacity=".92"/>
+
+  <!-- 顶部受光边缘 -->
+  <rect x="29.5" y="29.5" width="453" height="453" rx="116.5" fill="none"
+        stroke="url(#rim)" stroke-width="3"/>
+</svg>

@@ -1,0 +1,303 @@
+/* ============================================================================
+ * clawAI UI · Base Layer
+ * ----------------------------------------------------------------------------
+ * 只做三件事：
+ *   1. 提供玻璃材质（.ui-glass / .ui-glass--strong / .ui-glass--soft）
+ *   2. 提供排版与滚动条基线
+ *   3. 提供少量跨组件复用的原子类
+ * 具体组件的样式一律写在各自的 .vue scoped 里，这里不放业务样式。
+ * ========================================================================= */
+
+/* ------------------------------------------------------------------ 玻璃材质 */
+.ui-glass,
+.ui-glass--strong,
+.ui-glass--soft {
+  position: relative;
+  isolation: isolate;
+  border-radius: var(--ui-r-lg);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(var(--ui-glass-sat))
+    brightness(var(--ui-glass-bright));
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(var(--ui-glass-sat))
+    brightness(var(--ui-glass-bright));
+  box-shadow:
+    inset 0 1px 1.5px var(--ui-edge-inner),
+    inset 0 -1px 1px var(--ui-edge-shade),
+    0 0 0 1px var(--ui-hairline),
+    var(--ui-shadow-3);
+  transition:
+    box-shadow var(--ui-dur-base) var(--ui-ease-out),
+    transform var(--ui-dur-base) var(--ui-ease-out),
+    background-color var(--ui-dur-base) var(--ui-ease-out);
+}
+
+.ui-glass {
+  background-color: rgb(var(--ui-glass-rgb) / var(--ui-glass-alpha));
+}
+
+.ui-glass--strong {
+  background-color: rgb(var(--ui-glass-strong-rgb) / var(--ui-glass-strong-alpha));
+  -webkit-backdrop-filter: blur(var(--ui-glass-strong-blur)) saturate(var(--ui-glass-sat))
+    brightness(var(--ui-glass-bright));
+  backdrop-filter: blur(var(--ui-glass-strong-blur)) saturate(var(--ui-glass-sat))
+    brightness(var(--ui-glass-bright));
+  box-shadow:
+    inset 0 1px 2px var(--ui-edge-strong),
+    inset 0 -1px 1.5px var(--ui-edge-shade),
+    0 0 0 1px var(--ui-hairline),
+    var(--ui-shadow-4);
+}
+
+.ui-glass--soft {
+  background-color: rgb(var(--ui-glass-soft-rgb) / var(--ui-glass-soft-alpha));
+  box-shadow:
+    inset 0 1px 1px var(--ui-edge-inner),
+    0 0 0 1px var(--ui-hairline),
+    var(--ui-shadow-2);
+}
+
+/* 边缘折射：1px 渐变描边，模拟玻璃厚边的光线弯折 */
+.ui-glass::before,
+.ui-glass--strong::before,
+.ui-glass--soft::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    152deg,
+    var(--ui-edge-strong) 0%,
+    var(--ui-edge) 26%,
+    transparent 52%,
+    var(--ui-edge-shade) 78%,
+    var(--ui-edge) 100%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* 镜面高光：跟随指针（--ui-mx / --ui-my），默认落在左上 */
+.ui-glass::after,
+.ui-glass--strong::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: radial-gradient(
+    120% 90% at var(--ui-mx) var(--ui-my),
+    rgb(255 255 255 / 0.34) 0%,
+    rgb(255 255 255 / 0.10) 34%,
+    transparent 68%
+  );
+  opacity: 0.85;
+  pointer-events: none;
+  transition: background var(--ui-dur-slow) var(--ui-ease-out);
+}
+
+html.dark .ui-glass::after,
+html.dark .ui-glass--strong::after,
+html[data-theme='dark'] .ui-glass::after,
+html[data-theme='dark'] .ui-glass--strong::after {
+  background: radial-gradient(
+    120% 90% at var(--ui-mx) var(--ui-my),
+    rgb(255 255 255 / 0.16) 0%,
+    rgb(255 255 255 / 0.05) 36%,
+    transparent 70%
+  );
+}
+
+/* 可交互玻璃：悬停抬升 + 强调描边 */
+.ui-glass--hover:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 2px var(--ui-edge-strong),
+    inset 0 -1px 1.5px var(--ui-edge-shade),
+    0 0 0 1px var(--ui-hairline),
+    var(--ui-shadow-4),
+    0 0 0 1px var(--ui-accent-ring);
+}
+
+/* ------------------------------------------------------------------ 排版基线 */
+.ui-h1,
+.ui-h2,
+.ui-h3,
+.ui-h4 {
+  margin: 0;
+  font-family: var(--ui-font);
+  color: var(--ui-text);
+  letter-spacing: -0.018em;
+  text-wrap: balance;
+}
+
+.ui-h1 {
+  font-size: var(--ui-fs-4xl);
+  line-height: var(--ui-lh-tight);
+  font-weight: 680;
+}
+.ui-h2 {
+  font-size: var(--ui-fs-3xl);
+  line-height: var(--ui-lh-tight);
+  font-weight: 660;
+}
+.ui-h3 {
+  font-size: var(--ui-fs-2xl);
+  line-height: var(--ui-lh-snug);
+  font-weight: 640;
+}
+.ui-h4 {
+  font-size: var(--ui-fs-lg);
+  line-height: var(--ui-lh-snug);
+  font-weight: 620;
+}
+
+.ui-text {
+  font-family: var(--ui-font);
+  font-size: var(--ui-fs-md);
+  line-height: var(--ui-lh-normal);
+  color: var(--ui-text-soft);
+}
+
+.ui-text-muted {
+  font-family: var(--ui-font);
+  font-size: var(--ui-fs-sm);
+  line-height: var(--ui-lh-normal);
+  color: var(--ui-text-muted);
+}
+
+.ui-text-faint {
+  font-family: var(--ui-font);
+  font-size: var(--ui-fs-xs);
+  line-height: var(--ui-lh-normal);
+  color: var(--ui-text-faint);
+}
+
+.ui-eyebrow {
+  font-family: var(--ui-font);
+  font-size: var(--ui-fs-2xs);
+  font-weight: 640;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ui-text-faint);
+}
+
+.ui-mono {
+  font-family: var(--ui-font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.ui-num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* ------------------------------------------------------------------ 滚动条 */
+.ui-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-line-strong) transparent;
+  overscroll-behavior: contain;
+}
+.ui-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.ui-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.ui-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--ui-line-strong);
+  border-radius: var(--ui-r-pill);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.ui-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: var(--ui-text-faint);
+  background-clip: content-box;
+}
+.ui-no-scrollbar {
+  scrollbar-width: none;
+}
+.ui-no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ------------------------------------------------------------------ 原子类 */
+.ui-stack {
+  display: flex;
+  flex-direction: column;
+}
+.ui-row {
+  display: flex;
+  align-items: center;
+}
+.ui-gap-1 {
+  gap: var(--ui-s-1);
+}
+.ui-gap-2 {
+  gap: var(--ui-s-2);
+}
+.ui-gap-3 {
+  gap: var(--ui-s-3);
+}
+.ui-gap-4 {
+  gap: var(--ui-s-4);
+}
+.ui-gap-6 {
+  gap: var(--ui-s-6);
+}
+
+.ui-truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-divider {
+  height: 1px;
+  width: 100%;
+  background: var(--ui-line);
+  border: 0;
+}
+
+/* 焦点环：统一可访问性表现 */
+.ui-focus-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ui-accent-ring);
+}
+
+/* 页面切换过渡（ShellViewport 使用） */
+.ui-fade-slide-enter-active {
+  transition:
+    opacity var(--ui-dur-base) var(--ui-ease-out),
+    transform var(--ui-dur-base) var(--ui-ease-out);
+}
+.ui-fade-slide-leave-active {
+  transition:
+    opacity var(--ui-dur-fast) var(--ui-ease-in-out),
+    transform var(--ui-dur-fast) var(--ui-ease-in-out);
+}
+.ui-fade-slide-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.ui-fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-fade-slide-enter-active,
+  .ui-fade-slide-leave-active {
+    transition: none;
+  }
+}
