@@ -38,6 +38,11 @@ jobs:
           go version | grep -q 'go1.27.3'
       - name: Unit tests
         working-directory: backend
+        env:
+          GEMINI_CLI_OAUTH_CLIENT_ID: test-gemini-client
+          GEMINI_CLI_OAUTH_CLIENT_SECRET: test-gemini-secret
+          ANTIGRAVITY_OAUTH_CLIENT_ID: test-antigravity-client
+          ANTIGRAVITY_OAUTH_CLIENT_SECRET: test-antigravity-secret
         run: make test-unit
       - name: Integration tests
         working-directory: backend
