@@ -151,6 +151,29 @@ func main() {
 	check(db.QueryRowContext(ctx, "SELECT balance,status FROM users WHERE id=$1", uid).Scan(&balance, &status))
 	assert(status == "disabled" && math.Abs(balance+0.01) < 1e-9, "unexpected actual cost must record debt and disable account")
 	report["underestimated_cost"] = map[string]any{"status": status, "debt_recorded": balance}
+	// v0.2.21+ combines concurrent settlements. Verify that the new path keeps
+	// the same overdraft disabling and idempotency guarantees as Apply.
+	check(db.QueryRowContext(ctx, "INSERT INTO users(email,password_hash,balance) VALUES($1,'test-only',0.07) RETURNING id", "batch-debt-"+uuid.NewString()+"@test.invalid").Scan(&uid))
+	check(db.QueryRowContext(ctx, "INSERT INTO api_keys(user_id,key,name) VALUES($1,$2,'batch-debt-test') RETURNING id", uid, "sk-"+uuid.NewString()).Scan(&kid))
+	batch := []*service.UsageBillingCommand{
+		{RequestID: uuid.NewString(), APIKeyID: kid, UserID: uid, BalanceCost: 0.03},
+		{RequestID: uuid.NewString(), APIKeyID: kid, UserID: uid, BalanceCost: 0.05},
+	}
+	outcomes, err := settlement.ApplyBatch(ctx, batch)
+	check(err)
+	for _, outcome := range outcomes {
+		check(outcome.Err)
+		assert(outcome.Result.Applied, "batch charge must apply")
+	}
+	check(db.QueryRowContext(ctx, "SELECT balance,status FROM users WHERE id=$1", uid).Scan(&balance, &status))
+	assert(status == "disabled" && math.Abs(balance+0.01) < 1e-9, "batch actual cost must record debt and disable account")
+	outcomes, err = settlement.ApplyBatch(ctx, batch)
+	check(err)
+	for _, outcome := range outcomes {
+		check(outcome.Err)
+		assert(!outcome.Result.Applied, "duplicate batch charge must not apply")
+	}
+	report["batch_underestimated_cost"] = map[string]any{"status": status, "debt_recorded": balance, "idempotency": "passed"}
 	refresh := repository.NewRefreshTokenCache(rdb)
 	auth := service.NewAuthService(client, users, nil, refresh, cfg, nil, nil, nil, nil, nil, nil, nil, nil)
 	user := &service.User{ID: uid, Email: "test@test.invalid", Role: service.RoleAdmin, PasswordHash: "test"}

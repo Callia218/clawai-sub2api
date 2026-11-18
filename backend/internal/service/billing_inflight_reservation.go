@@ -442,6 +442,7 @@ type inflightEstimateDeps struct {
 	resolver       *ModelPricingResolver
 	resolveMapping func(ctx context.Context, groupID int64, model string) ChannelMappingResult
 	userGroupRate  func(ctx context.Context, userID, groupID int64, groupDefault float64) float64
+	fastPolicy     func(context.Context) (*OpenAIFastPolicySettings, error)
 	// accountMappedModels 返回调度器可选账号对 model 的账号级映射结果（去重，不含 model 本身）。
 	// 准入时账号尚未选定，计费侧 billableModelWithFallback 会回退到实际转发模型（UpstreamModel，
 	// 即账号映射后的模型），因此这里取所有候选映射模型的最高估算。
@@ -588,7 +589,7 @@ func maxPerRequestPrice(resolved *ResolvedPricing) float64 {
 func validCost(v float64) bool { return v > 0 && !math.IsNaN(v) && !math.IsInf(v, 0) }
 
 // estimateOne 估算单个候选计费模型（未乘倍率的 token 部分与按次部分分开返回，便于套用不同倍率）。
-func (d inflightEstimateDeps) estimateOne(ctx context.Context, apiKey *APIKey, model string, req InflightEstimateRequest, textRate, imageRate float64) float64 {
+func (d inflightEstimateDeps) estimateOne(ctx context.Context, apiKey *APIKey, model string, req InflightEstimateRequest, tiers []string, textRate, imageRate float64) float64 {
 	cfg := inflightReservationCfg(d.cfg)
 	units := req.Units
 	if units <= 0 {
@@ -617,8 +618,12 @@ func (d inflightEstimateDeps) estimateOne(ctx context.Context, apiKey *APIKey, m
 			return 0
 		}
 		if d.billing != nil {
-			breakdown := d.billing.computeTokenBreakdown(pricing, UsageTokens{InputTokens: inputTokens, OutputTokens: outputTokens}, textRate, req.ServiceTier, true)
-			return breakdown.ActualCost * reasoningEffortBillingMultiplier(req.ReasoningEffort, pricing.ReasoningEffortMultipliers)
+			cost := 0.0
+			for _, tier := range tiers {
+				breakdown := d.billing.computeTokenBreakdown(pricing, UsageTokens{InputTokens: inputTokens, OutputTokens: outputTokens}, textRate, tier, true)
+				cost = math.Max(cost, breakdown.ActualCost)
+			}
+			return cost * reasoningEffortBillingMultiplier(req.ReasoningEffort, pricing.ReasoningEffortMultipliers)
 		}
 		return (float64(inputTokens)*pricing.InputPricePerToken + float64(outputTokens)*pricing.OutputPricePerToken) * textRate
 	}
@@ -702,10 +707,14 @@ func (d inflightEstimateDeps) estimate(ctx context.Context, apiKey *APIKey, req 
 		return 0, true
 	}
 	primary, fallbacks, upstreamInput := inflightBillingModelCandidates(ctx, d, apiKey, req.Model)
+	tiers, policyOK := d.inflightServiceTiers(ctx, apiKey, req, upstreamInput)
+	if !policyOK {
+		return 0, false
+	}
 	bestOf := func(models []string) float64 {
 		best := 0.0
 		for _, m := range models {
-			if c := d.estimateOne(ctx, apiKey, m, req, textRate, imageRate); c > best {
+			if c := d.estimateOne(ctx, apiKey, m, req, tiers, textRate, imageRate); c > best {
 				best = c
 			}
 		}
@@ -732,6 +741,83 @@ func (d inflightEstimateDeps) estimate(ctx context.Context, apiKey *APIKey, req 
 		return 0, false
 	}
 	return best, true
+}
+
+// Reservation precedes account selection and the forwarding tier policy. Keep
+// the client's tier and every possible forced tier, then price their maximum;
+// an account entitlement or later filter may lower the eventual bill. Never
+// rewrite the request here, or a reservation would change routing semantics.
+func (d inflightEstimateDeps) inflightServiceTiers(ctx context.Context, apiKey *APIKey, req InflightEstimateRequest, upstreamModel string) ([]string, bool) {
+	tiers := []string{req.ServiceTier}
+	group := apiKey.Group
+	if group != nil && !groupSupportsOpenAIFast(group.Platform) {
+		return tiers, true
+	}
+	settings := openAIFastPolicySettingsFromContext(ctx)
+	if settings == nil && d.fastPolicy != nil {
+		var err error
+		settings, err = d.fastPolicy(ctx)
+		if err != nil {
+			// Unknown policy may upgrade to a more expensive tier. Let the
+			// existing unpriced fail-closed gate reject instead of under-reserving.
+			return nil, false
+		}
+	}
+	hasForceRule := false
+	if settings != nil {
+		for _, rule := range settings.Rules {
+			if rule.Action == OpenAIFastPolicyActionForcePriority || rule.FallbackAction == OpenAIFastPolicyActionForcePriority {
+				hasForceRule = true
+				break
+			}
+		}
+	}
+	models := []string{req.Model, upstreamModel}
+	if d.accountMappedModels != nil && (hasForceRule || group != nil && group.ForceOpenAIUltrafast) {
+		models = append(models, d.accountMappedModels(ctx, apiKey, upstreamModel)...)
+	}
+	add := func(tier string) {
+		for _, existing := range tiers {
+			if existing == tier {
+				return
+			}
+		}
+		tiers = append(tiers, tier)
+	}
+	if group != nil {
+		if group.ForceOpenAIFast {
+			add(OpenAIFastTierPriority)
+		}
+		if group.ForceOpenAIUltrafast {
+			for _, model := range models {
+				if openAIModelSupportsUltrafast(model) {
+					add(OpenAIFastTierUltrafast)
+					break
+				}
+			}
+		}
+	}
+	if hasForceRule {
+		// No account has been selected yet. Evaluate the existing first-match
+		// policy for each account scope, including trusted user exceptions.
+		for _, accountType := range []string{AccountTypeOAuth, AccountTypeAPIKey, AccountTypeBedrock} {
+			account := &Account{Platform: PlatformOpenAI, Type: accountType}
+			for _, model := range models {
+				for _, tier := range tiers {
+					normalized := normalizedOpenAIServiceTierValue(tier)
+					if strings.TrimSpace(tier) == "" {
+						normalized = OpenAIFastTierMissing
+					}
+					action, _ := evaluateOpenAIFastPolicyWithSettings(settings, apiKey.User.ID, account, model, normalized)
+					if action == OpenAIFastPolicyActionForcePriority {
+						add(OpenAIFastTierPriority)
+						return tiers, true
+					}
+				}
+			}
+		}
+	}
+	return tiers, true
 }
 
 // EstimateInflightReservationCost 仅用基础定价的简化估算（保留给无 resolver 的调用方/测试）。
@@ -766,6 +852,9 @@ func inflightReservationCfg(cfg *config.Config) config.InflightReservationConfig
 
 func (s *GatewayService) inflightEstimateDeps() inflightEstimateDeps {
 	d := inflightEstimateDeps{cfg: s.cfg, billing: s.billingService, resolver: s.resolver}
+	if s.settingService != nil {
+		d.fastPolicy = s.settingService.GetOpenAIFastPolicySettings
+	}
 	if s.channelService != nil {
 		d.resolveMapping = s.channelService.ResolveChannelMapping
 	}
@@ -797,6 +886,9 @@ func (s *GatewayService) EstimateInflightReservation(ctx context.Context, apiKey
 
 func (s *OpenAIGatewayService) inflightEstimateDeps() inflightEstimateDeps {
 	d := inflightEstimateDeps{cfg: s.cfg, billing: s.billingService, resolver: s.resolver}
+	if s.settingService != nil {
+		d.fastPolicy = s.settingService.GetOpenAIFastPolicySettings
+	}
 	if s.channelService != nil {
 		d.resolveMapping = s.channelService.ResolveChannelMapping
 	}

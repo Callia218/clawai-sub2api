@@ -39,7 +39,7 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.27.3'
+          go version | grep -q 'go1.27.4'
       - name: Run govulncheck
         working-directory: backend
         run: |
@@ -63,6 +63,38 @@ jobs:
       - name: Install dependencies
         working-directory: frontend
         run: pnpm install --frozen-lockfile
-      - name: Audit locked dependencies
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Test audit policy rejection cases
+        run: python tools/check_frontend_audit.py --self-test
+      - name: Audit production and development dependencies
+        shell: bash
         working-directory: frontend
-        run: pnpm audit --audit-level=low
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/frontend-audit"
+          # Capture both command results; the gate rejects command/schema errors,
+          # every production finding and any finding without an exact exception.
+          set +e
+          pnpm audit --json > "$RUNNER_TEMP/frontend-audit/all.json" 2> "$RUNNER_TEMP/frontend-audit/all.stderr.log"
+          audit_status=$?
+          pnpm audit --prod --json > "$RUNNER_TEMP/frontend-audit/production.json" 2> "$RUNNER_TEMP/frontend-audit/production.stderr.log"
+          production_status=$?
+          set -e
+          printf '%s\n' "$audit_status" > "$RUNNER_TEMP/frontend-audit/all.exit-code"
+          printf '%s\n' "$production_status" > "$RUNNER_TEMP/frontend-audit/production.exit-code"
+          python ../tools/check_frontend_audit.py \
+            --audit "$RUNNER_TEMP/frontend-audit/all.json" \
+            --production-audit "$RUNNER_TEMP/frontend-audit/production.json" \
+            --audit-exit-code "$audit_status" \
+            --production-exit-code "$production_status" \
+            | tee "$RUNNER_TEMP/frontend-audit/gate.json"
+      - name: Preserve complete frontend audit evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: frontend-dependency-audit
+          path: ${{ runner.temp }}/frontend-audit/
+          retention-days: 30
+          if-no-files-found: warn

@@ -1,12 +1,12 @@
 # clawAI Sub2API（二次开发版）
 
-基于 [Wei-Shaw/sub2api v0.2.20](https://github.com/Wei-Shaw/sub2api/releases/tag/v0.2.20) 的非官方二次开发，维护者 [Callia218](https://github.com/Callia218)。本项目与 Sub2API 官方、OpenAI、Linux.SB 均无隶属或背书关系。
+基于 [Wei-Shaw/sub2api v0.2.23](https://github.com/Wei-Shaw/sub2api/releases/tag/v0.2.23) 的非官方二次开发，维护者 [Callia218](https://github.com/Callia218)。本项目与 Sub2API 官方、OpenAI、Linux.SB 均无隶属或背书关系。
 
-**当前版本：0.2.20-clawai.1。** 保留上游 LGPL-3.0 许可证及原作者署名；本仓库包含可构建的修改源码。Git 历史从脱敏后的发布快照开始，避免发布部署工作目录中的历史私密内容。上游代码的版权与来源不因本快照而改变。
+**当前版本：0.2.23-clawai.1。** 保留上游 LGPL-3.0 许可证及原作者署名；本仓库包含可构建的修改源码。Git 历史从脱敏后的发布快照开始，避免发布部署工作目录中的历史私密内容。上游代码的版权与来源不因本快照而改变。
 
 ## 与官方版的区别
 
-| 范围 | 官方 v0.2.20 基线 | 本二开内容 |
+| 范围 | 官方 v0.2.23 基线 | 本二开内容 |
 | --- | --- | --- |
 | 上游功能 | 管理 MCP、细粒度管理员密钥、邮箱黑名单、请求体预算、读写超时与模型修复 | 完整合并该版本；MCP 仍需显式配置，默认不开启 |
 | 并发计费 | 上游准入与异步结算链路 | 订阅日/周/月、余额和 Key 在途费用预留；DB 权威复核；异步计费完成前保持续期；无定价拒绝；实际超预估时记录欠款并禁用用户 |
@@ -22,7 +22,7 @@
 
 ## 从源码运行
 
-需要 Go 1.27.3、Node.js 24、pnpm 11.20.0，运行时需要 PostgreSQL 18 和 Redis 8。
+需要 Go 1.27.4、Node.js 24、pnpm 11.20.0，运行时需要 PostgreSQL 18 和 Redis 8。
 
 ```bash
 git clone https://github.com/Callia218/clawai-sub2api.git
@@ -39,7 +39,7 @@ go build -tags embed -trimpath -o sub2api ./cmd/server
 前端构建输出到 `backend/internal/web/dist`。也可以使用多阶段镜像：
 
 ```bash
-docker build --build-arg VERSION=0.2.20-clawai.1 -t clawai-sub2api:0.2.20-clawai.1 .
+docker build --build-arg VERSION=0.2.23-clawai.1 -t clawai-sub2api:0.2.23-clawai.1 .
 cp deploy/.env.example deploy/.env
 # 编辑 .env，为数据库、Redis、JWT、TOTP 分别生成独立随机密钥，并设置管理员信息
 chmod 600 deploy/.env
@@ -74,3 +74,5 @@ govulncheck ./...
 上游完整说明：[中文](docs/fork/upstream-README_CN.md) / [English](docs/fork/upstream-README.md) / [日本語](docs/fork/upstream-README_JA.md)。其中的官方镜像、安装地址和赞助信息属于上游，不代表本分支的发行地址。第三方许可见 [THIRD_PARTY.md](docs/fork/THIRD_PARTY.md)。漏洞反馈见 [SECURITY.md](SECURITY.md)。
 
 Google Gemini CLI / Antigravity OAuth 客户端 ID 与 Secret 均由部署者通过 GEMINI_CLI_OAUTH_CLIENT_ID、GEMINI_CLI_OAUTH_CLIENT_SECRET、ANTIGRAVITY_OAUTH_CLIENT_ID、ANTIGRAVITY_OAUTH_CLIENT_SECRET 提供，源码不包含可用默认值。缺失时拒绝授权/刷新；已有生产配置由运维私下迁移。
+
+本次累计升级及验证边界：[v0.2.20 → v0.2.23](docs/fork/UPGRADE_v0.2.23.md)。

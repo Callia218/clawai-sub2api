@@ -1,0 +1,2 @@
+# Keep the operator-supplied provider mark byte-identical on Windows checkouts.
+public/provider-icons/linux-sb.svg text eol=lf
