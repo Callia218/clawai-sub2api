@@ -442,9 +442,11 @@
                       @click="openImagePreview(item)"
                     >
                       <img
+                        :key="itemPreviewUrls[itemPreviewKey(item)]"
                         :src="itemPreviewUrls[itemPreviewKey(item)]"
                         class="h-full w-full object-cover"
                         alt=""
+                        @load="revealThumbnail"
                         @error="handlePreviewError(itemPreviewKey(item))"
                       />
                     </button>
@@ -2647,7 +2649,17 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', closePromptPopover)
   window.removeEventListener('scroll', closePromptPopover, true)
 })
+function revealThumbnail(event: Event) {
+  (event.currentTarget as HTMLImageElement).classList.add('batch-thumbnail-ready')
+}
 </script>
+
+<style scoped>
+@media (prefers-reduced-motion: no-preference) {
+  .batch-thumbnail-ready { animation: batch-thumbnail-in 360ms cubic-bezier(.16,1,.3,1); }
+  @keyframes batch-thumbnail-in { from { opacity: .65; filter: blur(4px); } to { opacity: 1; filter: none; } }
+}
+</style>
 
 <style scoped>
 .batch-row-action {

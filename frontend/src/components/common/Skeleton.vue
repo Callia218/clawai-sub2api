@@ -1,7 +1,7 @@
 <template>
   <div
     :class="[
-      'animate-pulse bg-gray-200 dark:bg-dark-700',
+      'skeleton-block bg-gray-200 dark:bg-dark-700',
       variant === 'circle' ? 'rounded-full' : 'rounded-lg',
       customClass
     ]"
@@ -44,3 +44,16 @@ const style = computed(() => {
   return s
 })
 </script>
+
+<style scoped>
+.skeleton-block { position: relative; overflow: hidden; }
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton-block::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(100deg, transparent 20%, rgb(255 255 255 / .38), transparent 80%);
+    animation: skeleton-sweep 1500ms linear infinite;
+  }
+  :global(.dark) .skeleton-block::after { opacity: .24; }
+  @keyframes skeleton-sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+}
+</style>

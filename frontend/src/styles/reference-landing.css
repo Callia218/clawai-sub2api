@@ -121,9 +121,13 @@
 .reference-landing .rl-connect-intro { padding-top: 26px; }
 .reference-landing .rl-connect-intro h2 > span { display: block; }
 .reference-landing .rl-connect-intro > p { margin-top: 22px; color: var(--rl-muted); }
-.reference-landing .rl-tabs { display: inline-flex; gap: 4px; padding: 5px; background: var(--rl-soft); border-radius: 10px; margin-top: 28px; max-width: 100%; }
+.reference-landing .rl-tabs { position:relative; display: inline-grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap: 4px; padding: 5px; background: var(--rl-soft); border-radius: 10px; margin-top: 28px; max-width: 100%; }
 .reference-landing .rl-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 10px 12px; border-radius: 7px; min-height: 44px; border: none; color: var(--rl-muted); font-size: .8125rem; font-weight: 600; background: transparent; line-height: 1.5; }
-.reference-landing .rl-tabs button[aria-selected='true'] { color:var(--glass-action-ink); background:var(--glass-control-fill); border:1px solid var(--glass-control-edge); box-shadow:var(--glass-control-shadow); }
+.reference-landing .rl-tabs button { position:relative; }
+.reference-landing .rl-tabs button[aria-selected='true'] { color:var(--glass-action-ink); }
+.rl-tab-lens { position:absolute; inset:5px auto 5px 5px; width:calc((100% - 14px) / 2); pointer-events:none; border-radius:999px; background:var(--glass-control-fill); border:1px solid var(--glass-control-edge); box-shadow:var(--glass-control-shadow); }
+.rl-tabs--developer .rl-tab-lens { transform:translateX(calc(100% + 4px)); }
+@media (forced-colors:active) { .reference-landing .rl-tabs button[aria-selected='true'] { outline:2px solid Highlight; outline-offset:-4px; } }
 .reference-landing .rl-connect-intro > .rl-protocol-note { font-size: .8125rem; line-height: 1.85; margin-top: 24px; }
 .reference-landing .rl-connect-intro > .rl-text-link { margin-top: 12px; }
 .reference-landing .rl-connect-panels { min-width: 0; }
@@ -258,7 +262,7 @@
   .reference-landing .rl-quota-rule-heading h3 { font-size: 1rem; }
   .reference-landing .rl-quota-rules article > p { font-size: .8125rem; }
   .reference-landing .rl-connect-intro > p { margin-top: 18px; font-size: .875rem; }
-  .reference-landing .rl-tabs { margin-top: 22px; display: flex; }
+  .reference-landing .rl-tabs { margin-top: 22px; display: grid; }
   .reference-landing .rl-tabs button { flex: 1; padding: 10px 8px; font-size: .75rem; }
   .reference-landing .rl-connect-intro > .rl-protocol-note { margin-top: 18px; font-size: .75rem; }
   .reference-landing :is(.rl-config-panel,.rl-code-panel) { padding: 22px; }
@@ -384,3 +388,18 @@
 .reference-landing .rl-stories--static .rl-story-column[aria-hidden='true'],
 .reference-landing .rl-stories--static .rl-story-set[aria-hidden='true'] { display:none; }
 .reference-landing .rl-stories--static .rl-story-card { min-height:0; }
+
+@media (prefers-reduced-motion:no-preference) {
+  .rl-tab-lens { transition:transform 240ms cubic-bezier(.22,1.14,.36,1); }
+  .rl-menu-enter-active,.rl-menu-leave-active { transform-origin:top right; transition:transform 200ms var(--ui-ease-out),opacity 160ms; }
+  .rl-menu-leave-active { transition-duration:140ms; pointer-events:none; }
+  .rl-menu-enter-from,.rl-menu-leave-to { opacity:0; transform:translateY(-6px) scale(.97); }
+}
+@media (hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference) {
+  .reference-landing .rl-challenge { position:relative; isolation:isolate; transition:transform 180ms var(--ui-ease-out),border-color 180ms; }
+  .reference-landing .rl-challenge::after { content:''; position:absolute; inset:0; border-radius:inherit; pointer-events:none; z-index:-1; opacity:0; background:radial-gradient(155px circle at var(--rl-x,50%) var(--rl-y,50%),color-mix(in srgb,var(--rl-accent) 22%,transparent),transparent); transition:opacity 150ms; }
+  .reference-landing .rl-challenge:hover { transform:perspective(900px) rotateY(var(--rl-tilt,0deg)); border-color:color-mix(in srgb,var(--rl-accent) 44%,var(--rl-line)); }
+  .reference-landing .rl-challenge:hover::after { opacity:1; }
+  .reference-landing .rl-hero-cta > * { transition:transform 150ms var(--ui-ease-out); }
+  .reference-landing .rl-hero-cta:hover > * { transform:translate(var(--rl-dx,0px),var(--rl-dy,0px)); }
+}

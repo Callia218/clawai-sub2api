@@ -33,7 +33,10 @@ export function useLandingMotion(root: Ref<HTMLElement | null>) {
     const animation = target.animate([
       { opacity: 0.35, transform: 'translateY(24px)' },
       { opacity: 1, transform: 'translateY(0)' }
-    ], { duration: 600, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' })
+    ], {
+      duration: 460, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'backwards',
+      delay: window.matchMedia('(min-width: 641px)').matches ? Number(target.getAttribute('data-reveal-order') || 0) * 50 : 0
+    })
     animations.add(animation)
     animation.onfinish = () => animations.delete(animation)
     animation.oncancel = () => animations.delete(animation)

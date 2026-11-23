@@ -5,6 +5,7 @@
  */
 
 import { apiClient } from './client'
+import type { AxiosProgressEvent } from 'axios'
 import type { UserPricingInterval, UserSupportedModelPricing } from './channels'
 
 /** 官方参考价（USD per token，与计费目录同源；字段缺失 = 目录未覆盖）。 */
@@ -89,10 +90,8 @@ export interface ModelPlazaResponse {
 }
 
 /** 获取模型广场数据。开关未启用时后端返回 404。 */
-export async function getModelPlaza(options?: { signal?: AbortSignal }): Promise<ModelPlazaResponse> {
-  const { data } = await apiClient.get<ModelPlazaResponse>('/model-plaza', {
-    signal: options?.signal
-  })
+export async function getModelPlaza(options?: { signal?: AbortSignal; onDownloadProgress?: (event: AxiosProgressEvent) => void }): Promise<ModelPlazaResponse> {
+  const { data } = await apiClient.get<ModelPlazaResponse>('/model-plaza', options)
   return data
 }
 

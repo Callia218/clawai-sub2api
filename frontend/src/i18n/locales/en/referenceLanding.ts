@@ -1,5 +1,7 @@
 export default {
   referenceLanding: {
+    preview: { title: 'Preview how the model list loads', guide: 'Explore the 24 motion references', note: 'This public, interactive sample does not access your account. The timeline controls the demo, not network speed, real models or prices.', play: 'Play preview', pause: 'Pause', timeline: 'Preview timeline', group: 'Example model directory', status: 'Preview complete' },
+    atlas: { eyebrow: 'AI workspace', home: 'Home', start: 'Quick start', shortcuts: 'Page shortcuts', cases: 'Use cases', stories: 'Example reviews', featuresTitle: 'What can you do with {siteName}?' },
     nav: { features: 'Features', quota: 'Usage limits', connection: 'Connect', questions: 'FAQ' },
     hero: {
       title: 'Bring GPT', accent: 'into your workflow.',
@@ -15,9 +17,9 @@ export default {
     features: {
       title: 'The essentials,', accent: 'in one place.',
       description: 'Set up your connection. Keep track of every call.',
-      modelTitle: 'Start with available models', modelDescription: 'Check model IDs, supported endpoints and pricing in the model plaza before choosing a model for your project.',
-      keyTitle: 'Connect each tool', keyDescription: 'Create dedicated API keys with expiry dates, usage limits and access rules. Update or disable them as needed.',
-      usageTitle: 'Understand your usage', usageDescription: 'Review request results, tokens and costs. Filter by time or API key to follow each project’s actual usage.',
+      modelTitle: 'Model catalog', modelDescription: 'Compare model IDs, endpoints and prices.',
+      keyTitle: 'Project keys', keyDescription: 'Set a limit and expiry for each tool.',
+      usageTitle: 'Usage history', usageDescription: 'See token usage and cost by key.',
     },
     challenges: {
       title: 'Less setup and guesswork.', accent: 'More focus.',

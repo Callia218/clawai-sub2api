@@ -1,8 +1,7 @@
 <template>
   <div
     :class="[
-      'group relative flex flex-col overflow-hidden rounded-2xl border transition-all',
-      'hover:shadow-xl hover:-translate-y-0.5',
+      'plan-surface group relative flex flex-col overflow-hidden rounded-2xl border',
       borderClass,
       'bg-white dark:bg-dark-800',
     ]"
@@ -95,7 +94,7 @@
       <!-- Subscribe Button -->
       <button
         type="button"
-        :class="['w-full rounded-xl py-2.5 text-sm font-semibold transition-all active:scale-[0.98]', btnClass]"
+        :class="['w-full rounded-xl py-2.5 text-sm font-semibold transition-colors', btnClass]"
         @click="emit('select', plan)"
       >
         {{ isRenewal ? t('payment.renewNow') : t('payment.subscribeNow') }}
@@ -178,3 +177,25 @@ const modelScopeLabels = computed(() => {
 
 const validitySuffix = computed(() => planValiditySuffix(props.plan, t))
 </script>
+
+<style scoped>
+.plan-surface:focus-within { outline: 2px solid currentColor; outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .plan-surface { transition: transform 180ms ease-out, box-shadow 180ms ease-out; }
+  .plan-surface:hover { transform: translateY(-2px); box-shadow: 0 12px 25px -18px rgb(15 23 42 / .45); }
+}
+@supports (offset-path: inset(2px round 1rem)) {
+  @media (prefers-reduced-motion: no-preference) {
+    .plan-surface::after {
+      content: ''; position: absolute; top: 0; left: 0; pointer-events: none; opacity: 0;
+      width: 30px; height: 2px; border-radius: 99px; offset-path: inset(2px round 1rem);
+      background: linear-gradient(90deg, transparent, var(--ui-accent, #3785d8));
+    }
+    .plan-surface:focus-within::after { animation: plan-rim 1350ms linear; }
+  }
+  @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+    .plan-surface:hover::after { animation: plan-rim 1350ms linear; }
+  }
+}
+@keyframes plan-rim { 0% { offset-distance: 0%; opacity: 0; } 10%, 85% { opacity: 1; } 100% { offset-distance: 100%; opacity: 0; } }
+</style>

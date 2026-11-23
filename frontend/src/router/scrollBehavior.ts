@@ -6,7 +6,7 @@ export const scrollBehavior: RouterScrollBehavior = async (to, from, savedPositi
     // Vue Router also supplies history.state.scroll on a document reload.
     // Only ignore it for the first Home navigation after an actual refresh.
     // Later back/forward navigation in that same document must still restore.
-    if (from === START_LOCATION && navigation?.type === 'reload') {
+    if (!to.hash && from === START_LOCATION && navigation?.type === 'reload') {
       return { left: 0, top: 0, behavior: 'instant' }
     }
     if (savedPosition) return { ...savedPosition, behavior: 'instant' }

@@ -1,5 +1,7 @@
 export default {
   referenceLanding: {
+    preview: { title: '试播：模型列表如何加载', guide: '查看 24 项动效与操作位置', note: '这是公开的交互样例，不读取你的账户。时间轴只控制演示，不代表网络速度、真实模型或价格。', play: '播放演示', pause: '暂停', timeline: '演示进度', group: '示例模型目录', status: '演示已完成' },
+    atlas: { eyebrow: 'AI 工作台', home: '首页', start: '快速开始', shortcuts: '页面快捷导航', cases: '使用场景', stories: '评价示例', featuresTitle: '{siteName} 能帮你做什么' },
     nav: { features: '产品能力', quota: '额度说明', connection: '如何接入', questions: '常见问题' },
     hero: {
       title: '让 GPT，', accent: '融入你的工作。',
@@ -15,9 +17,9 @@ export default {
     features: {
       title: '需要的能力，', accent: '都在一处。',
       description: '把连接配置好，把每一次使用看清楚。',
-      modelTitle: '从可用模型开始', modelDescription: '在模型广场核对模型 ID、支持的接口和计费信息，再选择适合项目的模型。',
-      keyTitle: '为每个工具建立连接', keyDescription: '创建专用 API 密钥，设置有效期、使用额度与访问范围，随时调整或停用。',
-      usageTitle: '让消耗有据可查', usageDescription: '查看调用结果、Token 用量和费用，按时间或密钥追踪项目的实际使用。',
+      modelTitle: '可用模型', modelDescription: '核对模型 ID、接口和价格。',
+      keyTitle: '项目密钥', keyDescription: '为每个工具单独设置额度和有效期。',
+      usageTitle: '用量记录', usageDescription: '按密钥查看 Token 用量和费用。',
     },
     challenges: {
       title: '少一点配置与顾虑，', accent: '多一点专注。',

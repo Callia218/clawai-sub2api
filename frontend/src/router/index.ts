@@ -32,6 +32,12 @@ const routes: RouteRecordRaw[] = [
 
   // ==================== Public Routes ====================
   {
+    path: '/motion-guide',
+    name: 'MotionGuide',
+    component: () => import('@/views/public/MotionGuideView.vue'),
+    meta: { requiresAuth: false, title: 'Motion guide', titleKey: 'referenceLanding.preview.guide' }
+  },
+  {
     path: '/home',
     name: 'Home',
     component: () => import('@/views/HomeView.vue'),

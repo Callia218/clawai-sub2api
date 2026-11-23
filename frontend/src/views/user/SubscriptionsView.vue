@@ -2,10 +2,17 @@
   <AppLayout>
     <div class="space-y-6">
       <!-- Loading State -->
-      <div v-if="loading" class="flex justify-center py-12">
-        <div
-          class="h-8 w-8 animate-spin rounded-full border-2 border-primary-500 border-t-transparent"
-        ></div>
+      <div v-if="loading" role="status" class="grid gap-6 lg:grid-cols-2">
+        <span class="sr-only">{{ t('common.loading') }}</span>
+        <div v-for="slot in 2" :key="slot" aria-hidden="true" class="rounded-2xl border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800">
+          <div class="flex items-center justify-between border-b border-gray-100 p-4 dark:border-dark-700">
+            <Skeleton width="42%" height="1.1rem" /><Skeleton width="3.5rem" height="1.25rem" />
+          </div>
+          <div class="space-y-4 p-4">
+            <Skeleton width="32%" height="0.85rem" /><Skeleton height="0.5rem" />
+            <Skeleton width="45%" height="0.85rem" /><Skeleton height="0.5rem" />
+          </div>
+        </div>
       </div>
 
       <!-- Empty State -->
@@ -24,7 +31,7 @@
       </div>
 
       <!-- Subscriptions Grid -->
-      <div v-else class="grid gap-6 lg:grid-cols-2">
+      <div v-else class="subscription-results grid gap-6 lg:grid-cols-2">
         <div
           v-for="subscription in subscriptions"
           :key="subscription.id"
@@ -255,6 +262,7 @@ import { useAppStore } from '@/stores/app'
 import subscriptionsAPI from '@/api/subscriptions'
 import type { UserSubscription } from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import Skeleton from '@/components/common/Skeleton.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateTimeToMinute } from '@/utils/format'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
@@ -392,3 +400,10 @@ onMounted(() => {
   loadSubscriptions()
 })
 </script>
+
+<style scoped>
+@media (prefers-reduced-motion: no-preference) {
+  .subscription-results { animation: subscriptions-ready 220ms ease-out; }
+  @keyframes subscriptions-ready { from { opacity: .72; } }
+}
+</style>

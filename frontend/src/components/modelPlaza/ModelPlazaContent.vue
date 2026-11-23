@@ -15,7 +15,7 @@
 
     <!-- 未登录提示 -->
     <p
-      v-if="!isAuthenticated"
+      v-if="!isAuthenticated && !preview"
       class="flex items-center gap-1.5 text-xs text-gray-400 dark:text-dark-500"
     >
       <Icon name="infoCircle" size="xs" class="h-3.5 w-3.5" />
@@ -23,8 +23,15 @@
     </p>
 
     <!-- 加载/错误/空 -->
-    <div v-if="loading" class="flex min-h-[240px] items-center justify-center">
-      <div class="h-8 w-8 animate-spin rounded-full border-2 border-primary-600/25 border-t-primary-600 dark:border-primary-400/25 dark:border-t-primary-400"></div>
+    <div v-if="loading" class="plaza-pending" :class="{ 'plaza-paused': paused }">
+      <span role="status" class="sr-only">{{ t('common.loading') }}</span>
+      <div aria-hidden="true" class="plaza-skeleton">
+        <div class="plaza-sk-tools"><i /><i /><i /></div>
+        <div class="plaza-sk-list"><div class="plaza-sk-title"><i /><i /></div><div v-for="row in 4" :key="row" class="plaza-sk-row"><i /><i /><i /></div></div>
+      </div>
+      <div v-if="percent != null" class="plaza-progress" role="progressbar" :aria-label="t('common.loading')" :aria-valuenow="percent" aria-valuemin="0" aria-valuemax="100">
+        <span>{{ t('common.loading') }} <b>{{ percent }}%</b></span><div class="plaza-meter"><i :style="{ transform: `scaleX(${percent / 100})` }" /></div>
+      </div>
     </div>
     <div
       v-else-if="error"
@@ -32,7 +39,7 @@
     >
       {{ t('modelPlaza.loadFailed') }}
     </div>
-    <template v-else>
+    <div v-else class="plaza-ready space-y-5" :class="{ 'plaza-revealing': revealing }" @animationend.self="revealing = false">
       <!-- 筛选区:平台 → 分组 → 倍率 -->
       <PlazaFilterBar
         :platforms="platforms"
@@ -58,7 +65,7 @@
       >
         {{ searchActive ? t('modelPlaza.noSearchResult') : t('modelPlaza.empty') }}
       </div>
-    </template>
+    </div>
   </div>
 </template>
 
@@ -76,6 +83,9 @@ import { useAuthStore } from '@/stores/auth'
 const props = defineProps<{
   response: ModelPlazaResponse | null
   loading: boolean
+  percent?: number | null
+  preview?: boolean
+  paused?: boolean
   error?: boolean
   /** 后台内嵌形态(AppLayout 内):隐藏页头。 */
   embedded?: boolean
@@ -91,6 +101,10 @@ const selectedRate = ref<number | 'all'>('all')
 const searchQuery = ref('')
 
 const searchActive = computed(() => searchQuery.value.trim() !== '')
+const revealing = ref(false)
+watch(() => props.loading, (loading, wasLoading) => {
+  revealing.value = wasLoading && !loading && !props.error && window.matchMedia('(prefers-reduced-motion: no-preference)').matches
+})
 
 const descriptionHtml = computed(() => {
   const md = props.response?.description?.trim()
@@ -191,5 +205,34 @@ const filteredGroups = computed(() => {
 
 .plaza-description :deep(blockquote) {
   @apply my-2 border-l-4 border-gray-300 pl-3 text-gray-600 dark:border-dark-600 dark:text-dark-300;
+}
+.plaza-pending { position: relative; max-width: 100%; }
+.plaza-skeleton { position: relative; overflow: hidden; border-radius: 16px; color: #e2e3e0; }
+.plaza-sk-tools, .plaza-sk-list { padding: 18px 20px; border: 1px solid #e3e5e2; border-radius: 14px; background: white; }
+.plaza-sk-tools, .plaza-sk-title, .plaza-sk-row { display: flex; align-items: center; gap: 10px; }
+.plaza-sk-tools { margin-bottom: 16px; }
+.plaza-skeleton i { display: block; height: 10px; background: currentColor; border-radius: 5px; }
+.plaza-sk-tools i { height: 24px; width: min(19%, 100px); }
+.plaza-sk-title { padding-block: 6px 16px; }
+.plaza-sk-title i { height: 16px; width: 22%; } .plaza-sk-title i + i { width: 11%; }
+.plaza-sk-row { min-height: 42px; border-top: 1px solid #e8e9e7; }
+.plaza-sk-row i { width: 23%; } .plaza-sk-row i + i { width: 13%; margin-left: auto; }
+.plaza-progress { position: absolute; top: 0; inset-inline: 9px; color: inherit; font-size: .75rem; pointer-events: none; }
+.plaza-progress > span { position: absolute; top: 19px; right: 9px; font-variant-numeric: tabular-nums; }
+.plaza-meter { height: 3px; border-radius: 99px; overflow: hidden; background: #e8edde; }
+.plaza-meter i { display: block; height: 100%; background: #8cc515; transform-origin: left; }
+:global(.dark) .plaza-skeleton { color: #39434e; }
+:global(.dark) :is(.plaza-sk-list,.plaza-sk-tools) { background: #20262d; border-color: #39424b; }
+:global(.dark) .plaza-sk-row { border-color: #353d47; }
+@media (prefers-reduced-motion:no-preference) {
+  .plaza-skeleton::after { content: ''; position: absolute; inset: 0; background: linear-gradient(100deg,transparent 22%,rgb(255 255 255 / .65) 50%,transparent 78%); animation: plaza-sweep 1500ms linear infinite; pointer-events: none; }
+  .plaza-paused .plaza-skeleton::after { animation-play-state: paused; }
+  :global(.dark) .plaza-skeleton::after { opacity: .18; }
+  .plaza-meter i { transition: transform 600ms cubic-bezier(.33,1,.68,1); }
+  .plaza-revealing { animation: plaza-arrived 700ms cubic-bezier(.16,1,.3,1); }
+  .plaza-revealing :deep(section:first-of-type header) { animation: plaza-resolve 700ms cubic-bezier(.16,1,.3,1); }
+  @keyframes plaza-sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+  @keyframes plaza-arrived { from { opacity: .4; } to { opacity: 1; } }
+  @keyframes plaza-resolve { from { filter: blur(14px); } to { filter: blur(0); } }
 }
 </style>

@@ -55,7 +55,7 @@
     </div>
 
     <!-- ---------------------------------------------------------- 导航 -->
-    <nav ref="navRef" class="rail__nav ui-scroll">
+    <nav ref="navRef" class="rail__nav ui-scroll" @click.capture="rememberSelection">
       <div v-for="section in sections" :key="section.key" class="rail__section">
         <p v-if="section.title && (!collapsed || mobileOpen)" class="rail__section-title">
           {{ section.title }}
@@ -179,8 +179,12 @@
   </aside>
 </template>
 
+<script lang="ts">
+let railOrigin: { pathname: string; top: number; at: number } | undefined
+</script>
+
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useTheme } from '@/composables/useTheme'
@@ -217,6 +221,31 @@ const settingsLoaded = computed(() => appStore.publicSettingsLoaded)
 
 const railRef = ref<HTMLElement | null>(null)
 const navRef = ref<HTMLElement | null>(null)
+const fineMotion = window.matchMedia('(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)')
+
+function rememberSelection(event: MouseEvent) {
+  if (!fineMotion.matches || mobileOpen.value || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
+  const link = (event.target as Element).closest<HTMLAnchorElement>('a.rail__item')
+  const active = navRef.value?.querySelector('.rail__item.is-active')
+  if (link && active && link !== active) {
+    railOrigin = { pathname: link.pathname, top: active.getBoundingClientRect().top, at: performance.now() }
+  }
+}
+
+function settleSelection() {
+  if (!railOrigin || railOrigin.pathname !== route.path) return
+  const origin = railOrigin
+  railOrigin = undefined
+  const active = navRef.value?.querySelector<HTMLElement>('.rail__item.is-active')
+  if (!active || !fineMotion.matches || performance.now() - origin.at > 1000) return
+  const offset = origin.top - active.getBoundingClientRect().top
+  if (Math.abs(offset) > 160 || Math.abs(offset) < 1) return
+  active.style.setProperty('--rail-travel', `${offset}px`)
+  active.style.setProperty('--rail-stretch', String(Math.min(2.05, 1 + Math.abs(offset) / active.offsetHeight)))
+  active.classList.add('rail-arriving')
+  active.addEventListener('animationend', () => active.classList.remove('rail-arriving'), { once: true })
+}
+watch(() => route.path, settleSelection, { flush: 'post' })
 
 const { isDark, toggleTheme } = useTheme()
 
@@ -239,7 +268,7 @@ function asIconName(name: string | null | undefined) {
 
 function trackPointer(ev: PointerEvent) {
   const el = railRef.value
-  if (!el) return
+  if (!el || ev.pointerType === 'touch' || !fineMotion.matches) return
   const rect = el.getBoundingClientRect()
   if (!rect.width || !rect.height) return
   el.style.setProperty('--ui-mx', `${((ev.clientX - rect.left) / rect.width) * 100}%`)
@@ -247,11 +276,10 @@ function trackPointer(ev: PointerEvent) {
 }
 
 onMounted(() => {
-  if (appStore.sidebarScrollTop > 0 && navRef.value) {
-    void nextTick(() => {
-      if (navRef.value) navRef.value.scrollTop = appStore.sidebarScrollTop
-    })
-  }
+  void nextTick(() => {
+    if (appStore.sidebarScrollTop > 0 && navRef.value) navRef.value.scrollTop = appStore.sidebarScrollTop
+    settleSelection()
+  })
 })
 
 onBeforeUnmount(() => {
@@ -523,6 +551,18 @@ html[data-theme='dark'] .rail::after {
 .rail__item.is-active {
   color: var(--ui-text);
   font-weight: 620;
+  isolation: isolate;
+}
+
+.rail__item.is-active::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: 999px;
+  pointer-events: none;
+  border: 1px solid var(--ui-edge-inner);
+  background-image: linear-gradient(165deg, rgb(255 255 255 / .15), transparent 60%);
   background-color: rgb(var(--ui-glass-strong-rgb) / calc(var(--ui-glass-strong-alpha) + 0.14));
   box-shadow:
     inset 0 1px 1px var(--ui-edge-inner),
@@ -708,6 +748,20 @@ html[data-theme='dark'] .rail::after {
     padding: 0 var(--ui-s-3);
     gap: var(--ui-s-3);
   }
+}
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .rail-arriving::after { animation: rail-arrive 350ms cubic-bezier(.3,.05,.28,1); }
+  @keyframes rail-arrive {
+    from { transform: translateY(var(--rail-travel)); }
+    42% { transform: translateY(calc(var(--rail-travel) * .5)) scale(.98,var(--rail-stretch)); }
+    80% { transform: translateY(calc(var(--rail-travel) * -.04)) scale(1,.96); }
+    to { transform: none; }
+  }
+  .rail--collapsed .rail__icon { transition: transform 150ms var(--ui-ease-out); }
+  .rail--collapsed .rail__item:is(:hover,:focus-visible) .rail__icon { transform: scale(1.2); }
+  .rail--collapsed .rail__item:has(+ .rail__item:is(:hover,:focus-visible)) .rail__icon,
+  .rail--collapsed .rail__item:is(:hover,:focus-visible) + .rail__item .rail__icon { transform: scale(1.08); }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 )
@@ -221,7 +220,7 @@ func ChatChunkToSSE(chunk ChatCompletionsChunk) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("data: %s\n\n", data), nil
+	return "data: " + string(data) + "\n\n", nil
 }
 
 // --- internal handlers ---

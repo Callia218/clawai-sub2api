@@ -6,9 +6,7 @@
     <header class="rl-header hp__top" @keydown.esc="closeMenu">
       <nav class="glass-panel rl-nav rl-container" :aria-label="t('glass.nav.navigation')">
         <router-link to="/" class="rl-brand"><PublicBrandLogo :src="siteLogo || '/logo.svg'" /><span>{{ siteName }}</span></router-link>
-        <div class="rl-nav-links">
-          <a v-for="item in navigation" :key="item.id" :href="`#${item.id}`">{{ item.label }}</a>
-        </div>
+        <div class="rl-nav-links"><a v-for="item in navigation" :key="item.id" :href="`#${item.id}`">{{ item.label }}</a></div>
         <div class="rl-nav-actions">
           <PublicLocaleSwitcher />
           <button class="glass-button rl-icon-button" type="button" :aria-label="t(isDark ? 'glass.nav.light' : 'glass.nav.dark')" @click="toggleTheme"><Icon :name="isDark ? 'sun' : 'moon'" size="md" aria-hidden="true" /></button>
@@ -16,20 +14,23 @@
           <button ref="menuButton" class="glass-button rl-icon-button rl-menu-toggle" type="button" :aria-expanded="menuOpen" aria-controls="home-mobile-menu" :aria-label="t(menuOpen ? 'glass.nav.closeMenu' : 'glass.nav.openMenu')" @click="menuOpen = !menuOpen"><Icon :name="menuOpen ? 'x' : 'menu'" size="md" aria-hidden="true" /></button>
         </div>
       </nav>
+      <Transition name="rl-menu" @before-leave="disableClosingMenu">
       <nav v-if="menuOpen" id="home-mobile-menu" class="glass-panel rl-mobile-nav rl-container" :aria-label="t('glass.nav.navigation')" @click="closeMenu">
         <a v-for="item in navigation" :key="item.id" :href="`#${item.id}`">{{ item.label }}<Icon name="arrowRight" size="sm" aria-hidden="true" /></a>
         <button type="button" class="rl-mobile-theme" @click="toggleTheme">{{ t(isDark ? 'glass.nav.light' : 'glass.nav.dark') }}<Icon :name="isDark ? 'sun' : 'moon'" size="sm" aria-hidden="true" /></button>
         <div class="rl-mobile-language"><span>{{ t('glass.nav.language') }}</span><PublicLocaleSwitcher /></div>
       </nav>
+      </Transition>
     </header>
 
     <main id="home-main">
-      <section class="rl-hero rl-container" aria-labelledby="home-title">
+      <section class="rl-hero rl-container ref-hero" aria-labelledby="home-title">
         <div class="rl-hero-copy" data-reveal>
+          <span class="ref-eyebrow">{{ t('referenceLanding.atlas.eyebrow') }}</span>
           <h1 id="home-title">{{ t('referenceLanding.hero.title') }}<span>{{ t('referenceLanding.hero.accent') }}</span></h1>
           <p class="rl-hero-description">{{ t('referenceLanding.hero.description') }}</p>
           <div class="rl-hero-actions">
-            <router-link :to="entryPath" class="glass-button glass-button--primary rl-button rl-button--dark">{{ t(isAuthenticated ? 'referenceLanding.hero.authenticated' : 'referenceLanding.hero.primary') }}<Icon name="arrowRight" size="md" aria-hidden="true" /></router-link>
+            <router-link :to="entryPath" class="glass-button glass-button--primary rl-button rl-button--dark rl-hero-cta" @pointermove="trackAccent"><span>{{ t(isAuthenticated ? 'referenceLanding.hero.authenticated' : 'referenceLanding.hero.primary') }}</span><Icon name="arrowRight" size="md" aria-hidden="true" /></router-link>
             <a href="#connection" class="glass-button rl-button rl-button--outline">{{ t('referenceLanding.hero.secondary') }}<Icon name="chevronRight" size="sm" aria-hidden="true" /></a>
           </div>
           <p v-if="registrationEnabled && !isAuthenticated" class="rl-register">{{ t('referenceLanding.hero.registerLead') }} <router-link to="/register">{{ t('referenceLanding.hero.register') }}<Icon name="arrowRight" size="sm" aria-hidden="true" /></router-link></p>
@@ -37,23 +38,33 @@
           <p class="rl-hero-footnote">{{ t('referenceLanding.hero.footnote') }}</p>
         </div>
 
-        <LandingStoryMarquee :site-name="siteName" />
-
       </section>
 
-      <section class="rl-section rl-container rl-challenges" aria-labelledby="challenges-title">
-        <div class="rl-section-heading" data-reveal><h2 id="challenges-title">{{ t('referenceLanding.challenges.title') }} <span>{{ t('referenceLanding.challenges.accent') }}</span></h2><p>{{ t('referenceLanding.challenges.description') }}</p></div>
-        <div class="rl-challenge-grid">
-          <article v-for="problem in challenges" :key="problem.id" class="glass-panel rl-challenge" data-reveal><span class="glass-control rl-feature-icon"><Icon :name="problem.icon" size="md" aria-hidden="true" /></span><h3>{{ problem.title }}</h3><p>{{ problem.description }}</p></article>
+      <section id="capabilities" class="rl-section rl-container ref-capabilities" aria-labelledby="features-title">
+        <div class="rl-section-heading" data-reveal><h2 id="features-title">{{ t('referenceLanding.atlas.featuresTitle', { siteName }) }}</h2></div>
+        <div class="rl-features ref-deck" :class="{ 'rl-features--two': !modelPlazaEnabled }" data-reveal>
+          <router-link v-for="feature in features" :key="feature.id" :to="feature.to" :data-testid="feature.id + '-feature'" class="ref-card" :class="'ref-card--' + feature.id">
+            <div class="ref-card-face">
+              <div aria-hidden="true" class="ref-card-art"><span class="ref-card-icon"><Icon :name="feature.icon" size="lg" /></span><span class="ref-card-paper"><i /><i /></span></div>
+              <h3>{{ feature.title }}</h3><p>{{ feature.description }}</p>
+              <span class="ref-card-link">{{ feature.action }} <Icon name="arrowRight" size="sm" aria-hidden="true" /></span>
+            </div>
+          </router-link>
         </div>
       </section>
 
-      <section id="capabilities" class="rl-section rl-container" aria-labelledby="features-title">
-        <div class="rl-section-heading" data-reveal><h2 id="features-title">{{ t('referenceLanding.features.title') }} <span>{{ t('referenceLanding.features.accent') }}</span></h2><p>{{ t('referenceLanding.features.description') }}</p></div>
-        <div class="rl-features" :class="{ 'rl-features--two': !modelPlazaEnabled }" data-reveal>
-          <article v-if="modelPlazaEnabled" class="glass-panel" data-testid="model-feature"><Icon name="cube" size="xl" aria-hidden="true" /><h3>{{ t('referenceLanding.features.modelTitle') }}</h3><p>{{ t('referenceLanding.features.modelDescription') }}</p><router-link :to="modelPlazaPath" class="rl-text-link">{{ modelPlazaLinkLabel }}<Icon name="arrowRight" size="sm" aria-hidden="true" /></router-link></article>
-          <article class="glass-panel" data-testid="keys-feature"><Icon name="key" size="xl" aria-hidden="true" /><h3>{{ t('referenceLanding.features.keyTitle') }}</h3><p>{{ t('referenceLanding.features.keyDescription') }}</p><router-link :to="protectedPath('/keys')" class="rl-text-link">{{ t('glass.home.keysAction') }}<Icon name="arrowRight" size="sm" aria-hidden="true" /></router-link></article>
-          <article class="glass-panel" data-testid="usage-feature"><Icon name="chart" size="xl" aria-hidden="true" /><h3>{{ t('referenceLanding.features.usageTitle') }}</h3><p>{{ t('referenceLanding.features.usageDescription') }}</p><router-link :to="protectedPath('/usage')" class="rl-text-link">{{ t('glass.home.usageAction') }}<Icon name="arrowRight" size="sm" aria-hidden="true" /></router-link></article>
+      <div class="rl-container ref-demo-wrap">
+        <details id="motion-preview" class="ref-demo" :open="$route.hash === '#motion-preview' || undefined" @toggle="togglePreview">
+          <summary><span>{{ t('referenceLanding.preview.title') }}</span><Icon name="chevronDown" size="sm" aria-hidden="true" /></summary>
+          <LandingLoadPreview v-if="previewOpen" />
+        </details>
+        <router-link class="rl-text-link ref-guide-link" to="/motion-guide">{{ t('referenceLanding.preview.guide') }} <Icon name="arrowRight" size="sm" aria-hidden="true" /></router-link>
+      </div>
+
+      <section id="use-cases" class="rl-section rl-container rl-challenges" aria-labelledby="challenges-title">
+        <div class="rl-section-heading" data-reveal><h2 id="challenges-title">{{ t('referenceLanding.challenges.title') }} <span>{{ t('referenceLanding.challenges.accent') }}</span></h2><p>{{ t('referenceLanding.challenges.description') }}</p></div>
+        <div class="rl-challenge-grid">
+          <article v-for="(problem, order) in challenges" :key="problem.id" class="glass-panel rl-challenge" data-reveal :data-reveal-order="order" @pointermove="trackSpotlight"><span class="glass-control rl-feature-icon"><Icon :name="problem.icon" size="md" aria-hidden="true" /></span><h3>{{ problem.title }}</h3><p>{{ problem.description }}</p></article>
         </div>
       </section>
 
@@ -71,7 +82,7 @@
         <div class="rl-connect-intro" data-reveal>
           <h2 id="connection-title">{{ t('referenceLanding.connection.title') }}<span>{{ t('referenceLanding.connection.accent') }}</span></h2>
           <p>{{ t('referenceLanding.connection.description') }}</p>
-          <div class="glass-panel rl-tabs" role="tablist" :aria-label="t('glass.home.connectionTabs')" @keydown="handleTabKey($event, 'connection')"><button v-for="tab in connectionTabs" :id="`connection-tab-${tab}`" :key="tab" type="button" role="tab" :aria-selected="connectionMode === tab" :aria-controls="`connection-panel-${tab}`" :tabindex="connectionMode === tab ? 0 : -1" @click="connectionMode = tab"><Icon :name="tab === 'client' ? 'grid' : 'terminal'" size="sm" aria-hidden="true" />{{ t(`glass.home.${tab}Tab`) }}</button></div>
+          <div class="glass-panel rl-tabs" :class="{ 'rl-tabs--developer': connectionMode === 'developer' }" role="tablist" :aria-label="t('glass.home.connectionTabs')" @keydown="handleTabKey($event, 'connection')"><span class="rl-tab-lens" aria-hidden="true" /><button v-for="tab in connectionTabs" :id="`connection-tab-${tab}`" :key="tab" type="button" role="tab" :aria-selected="connectionMode === tab" :aria-controls="`connection-panel-${tab}`" :tabindex="connectionMode === tab ? 0 : -1" @click="connectionMode = tab"><Icon :name="tab === 'client' ? 'grid' : 'terminal'" size="sm" aria-hidden="true" />{{ t(`glass.home.${tab}Tab`) }}</button></div>
           <p class="rl-protocol-note">{{ t('glass.home.protocolNote') }}</p>
           <a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer" class="rl-text-link">{{ t('glass.nav.docs') }}<Icon name="externalLink" size="sm" aria-hidden="true" /></a>
         </div>
@@ -97,8 +108,7 @@ $env:MODEL_ID='YOUR_MODEL_ID'</code></pre></details></div>
       </section>
 
       <section id="quick-start" class="rl-section rl-container rl-start" aria-labelledby="start-title">
-        <div class="rl-section-heading" data-reveal><h2 id="start-title">{{ t('referenceLanding.start.title') }}</h2><p>{{ t('referenceLanding.start.description') }}</p></div>
-        <ol class="rl-steps" data-reveal><li v-for="(step, index) in steps" :key="step.id"><span class="rl-step-number" aria-hidden="true">{{ index + 1 }}</span><h3>{{ step.title }}</h3><p>{{ step.desc }}</p><div class="rl-step-links"><router-link :to="step.to" class="rl-text-link">{{ step.action }}<Icon name="arrowRight" size="sm" aria-hidden="true" /></router-link><router-link v-if="step.id === 'account' && registrationEnabled && !isAuthenticated" to="/register" class="rl-text-link">{{ t('glass.home.steps.registerAction') }}</router-link></div></li></ol>
+        <LandingStepGuide :steps="steps" :show-register="registrationEnabled && !isAuthenticated" />
         <div v-if="paymentEnabled" class="rl-billing"><div><h3>{{ t('glass.home.billingTitle') }}</h3><p>{{ t('glass.home.paymentAvailable') }}</p></div><router-link :to="protectedPath('/purchase')" class="rl-text-link">{{ t('glass.home.paymentAction') }}<Icon name="arrowRight" size="sm" aria-hidden="true" /></router-link></div>
       </section>
 
@@ -106,7 +116,9 @@ $env:MODEL_ID='YOUR_MODEL_ID'</code></pre></details></div>
         <div data-reveal><h2 id="questions-title">{{ t('referenceLanding.faq.title') }}<span>{{ t('referenceLanding.faq.accent') }}</span></h2><p>{{ t('referenceLanding.faq.description') }}</p><a href="mailto:9768379@gmail.com" class="rl-text-link">9768379@gmail.com<Icon name="externalLink" size="sm" aria-hidden="true" /></a></div>
         <div class="glass-panel rl-faq-list" data-reveal><details v-for="faq in faqs" :key="faq.id"><summary>{{ faq.q }}<Icon name="plus" size="md" aria-hidden="true" /></summary><p>{{ faq.a }}</p></details></div>
       </section>
+      <div id="stories" class="rl-container ref-stories"><LandingStoryMarquee :site-name="siteName" /></div>
     </main>
+    <LandingSectionDock :items="dockItems" :label="t('referenceLanding.atlas.shortcuts')" />
 
     <footer class="rl-footer"><div class="rl-container"><div class="rl-footer-top"><div><router-link to="/" class="rl-brand"><PublicBrandLogo :src="siteLogo || '/logo.svg'" /><span>{{ siteName }}</span></router-link><p>{{ t('referenceLanding.footer.note') }}</p></div><nav :aria-label="t('glass.home.footerExplore')"><a href="#connection">{{ t('referenceLanding.nav.connection') }}</a><a href="#quota">{{ t('referenceLanding.nav.quota') }}</a><a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer">{{ t('glass.nav.docs') }}</a></nav><div class="rl-footer-contact"><span>{{ t('referenceLanding.footer.help') }}</span><a href="mailto:9768379@gmail.com">9768379@gmail.com</a></div></div><div class="rl-footer-bottom"><span>&copy; {{ currentYear }} {{ siteName }}</span><p>{{ t('referenceLanding.footer.legal') }}</p><a href="#home-main">{{ t('glass.nav.backTop') }}<Icon name="arrowUp" size="sm" aria-hidden="true" /></a></div></div></footer>
     <p class="rl-sr-only" role="status" aria-live="polite" aria-atomic="true">{{ copyStatus }}</p>
@@ -114,12 +126,14 @@ $env:MODEL_ID='YOUR_MODEL_ID'</code></pre></details></div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore, useAuthStore } from '@/stores'
 import Icon from '@/components/icons/Icon.vue'
 import PublicBackdrop from '@/components/public/PublicBackdrop.vue'
 import LandingStoryMarquee from '@/components/public/LandingStoryMarquee.vue'
+import LandingStepGuide from '@/components/public/LandingStepGuide.vue'
+import LandingSectionDock from '@/components/public/LandingSectionDock.vue'
 import PublicBrandLogo from '@/components/common/PublicBrandLogo.vue'
 import PublicLocaleSwitcher from '@/components/public/PublicLocaleSwitcher.vue'
 import { useClipboard } from '@/composables/useClipboard'
@@ -128,6 +142,7 @@ import { useTheme } from '@/composables/useTheme'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
 import '@/styles/reference-landing.css'
+import '@/styles/reference-scenes.css'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
@@ -135,6 +150,9 @@ const appStore = useAppStore()
 const { copyToClipboard } = useClipboard()
 const { isDark, toggleTheme } = useTheme()
 const landingRoot = ref<HTMLElement | null>(null)
+const previewOpen = ref(false)
+const LandingLoadPreview = defineAsyncComponent(() => import('./LandingLoadPreview.vue'))
+function togglePreview(event: Event) { previewOpen.value = (event.currentTarget as HTMLDetailsElement).open }
 useLandingMotion(landingRoot)
 const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'Sub2API')
 const siteLogo = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
@@ -155,8 +173,43 @@ const apiBaseUrl = computed(() => {
 const currentYear = new Date().getFullYear()
 function protectedPath(path: string) { return isAuthenticated.value ? path : `/login?redirect=${encodeURIComponent(path)}` }
 const navigation = computed(() => ['capabilities', 'quota', 'connection', 'questions'].map((id, index) => ({ id, label: t(`referenceLanding.nav.${['features', 'quota', 'connection', 'questions'][index]}`) })))
+const dockItems = computed(() => ([
+  { id: 'home-main', icon: 'home', label: t('referenceLanding.atlas.home') },
+  { id: 'capabilities', icon: 'grid', label: t('referenceLanding.nav.features') },
+  { id: 'use-cases', icon: 'cube', label: t('referenceLanding.atlas.cases') },
+  { id: 'quota', icon: 'creditCard', label: t('referenceLanding.nav.quota') },
+  { id: 'connection', icon: 'terminal', label: t('referenceLanding.nav.connection') },
+  { id: 'quick-start', icon: 'link', label: t('referenceLanding.atlas.start') },
+  { id: 'questions', icon: 'book', label: t('referenceLanding.nav.questions') },
+  { id: 'stories', icon: 'chat', label: t('referenceLanding.atlas.stories') },
+] as const))
+const features = computed(() => ([
+  { id: 'model', icon: 'cube', to: modelPlazaPath.value, title: t('referenceLanding.features.modelTitle'), description: t('referenceLanding.features.modelDescription'), action: modelPlazaLinkLabel.value },
+  { id: 'keys', icon: 'key', to: protectedPath('/keys'), title: t('referenceLanding.features.keyTitle'), description: t('referenceLanding.features.keyDescription'), action: t('glass.home.keysAction') },
+  { id: 'usage', icon: 'chart', to: protectedPath('/usage'), title: t('referenceLanding.features.usageTitle'), description: t('referenceLanding.features.usageDescription'), action: t('glass.home.usageAction') },
+] as const).filter(feature => feature.id !== 'model' || modelPlazaEnabled.value))
 const menuOpen = ref(false)
 const menuButton = ref<HTMLButtonElement | null>(null)
+function disableClosingMenu(menu: Element) { menu.setAttribute('inert', '') }
+const fineMotion = window.matchMedia('(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)')
+function trackAccent(event: PointerEvent) {
+  if (event.pointerType === 'touch' || !fineMotion.matches) return
+  const surface = event.currentTarget as HTMLElement
+  const bounds = surface.getBoundingClientRect()
+  const horizontal = Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width))
+  const vertical = Math.min(1, Math.max(0, (event.clientY - bounds.top) / bounds.height))
+  surface.style.setProperty('--rl-dx', `${(horizontal - 0.5) * 6}px`)
+  surface.style.setProperty('--rl-dy', `${(vertical - 0.5) * 4}px`)
+}
+function trackSpotlight(event: PointerEvent) {
+  if (event.pointerType === 'touch' || !fineMotion.matches) return
+  const surface = event.currentTarget as HTMLElement
+  const bounds = surface.getBoundingClientRect()
+  const horizontal = Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width))
+  surface.style.setProperty('--rl-x', `${horizontal * 100}%`)
+  surface.style.setProperty('--rl-y', `${event.clientY - bounds.top}px`)
+  surface.style.setProperty('--rl-tilt', `${(horizontal - .5) * 6}deg`)
+}
 function closeMenu(event?: Event) { menuOpen.value = false; if (event instanceof KeyboardEvent) menuButton.value?.focus() }
 const challenges = computed(() => ([
   { id: 'setup', icon: 'link' }, { id: 'budget', icon: 'chart' },
