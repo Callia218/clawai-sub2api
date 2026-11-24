@@ -18,6 +18,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -37,6 +38,8 @@ const (
 	maxResponseBytes = 8 << 20 // 单次响应上限 8MB，防止模型吐出巨量文本把内存打爆
 	maxHTMLBytes     = 2 << 20 // 单条 HTML 入库上限 2MB
 )
+
+var reasoningEfforts = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"}
 
 // GroupConfig 一个分组的测试配置。
 type GroupConfig struct {
@@ -175,11 +178,8 @@ type Service struct {
 // New 构造服务。DB 连接在首次使用时惰性建立，避免影响进程启动。
 func New(cfg *config.Config) *Service {
 	return &Service{
-		cfg: cfg,
-		client: &http.Client{
-			// 大模型画动画经常要一两分钟，给足余量
-			Timeout: 5 * time.Minute,
-		},
+		cfg:    cfg,
+		client: &http.Client{Timeout: 15 * time.Minute},
 	}
 }
 
@@ -403,12 +403,17 @@ func (s *Service) runInner(ctx context.Context) (*RunReport, error) {
 
 	report := &RunReport{StartedAt: time.Now(), Items: []RunItem{}}
 	for _, g := range cfg.Groups {
+		if ctx.Err() != nil {
+			break
+		}
 		if g.APIKeyID <= 0 || g.Model == "" {
 			continue
 		}
 		report.Items = append(report.Items, s.runOne(ctx, db, cfg, g))
 	}
-	s.cleanup(ctx, db, cfg)
+	if ctx.Err() == nil {
+		s.cleanup(ctx, db, cfg)
+	}
 	report.FinishedAt = time.Now()
 
 	s.runMu.Lock()
@@ -458,17 +463,26 @@ func (s *Service) runOne(ctx context.Context, db *sql.DB, cfg Config, g GroupCon
 	req.Header.Set("Authorization", "Bearer "+key)
 
 	resp, err := s.client.Do(req)
+	var raw []byte
+	if err == nil {
+		defer func() { _ = resp.Body.Close() }()
+		raw, err = io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	}
 	item.DurationMs = int(time.Since(start).Milliseconds())
 	if err != nil {
-		item.Error = "调用网关失败: " + err.Error()
+		switch {
+		case errors.Is(err, context.DeadlineExceeded):
+			item.Error = "等待生成结果超时，未收到完整响应；用量以使用记录为准"
+		case errors.Is(err, context.Canceled):
+			item.Error = "测评已取消，未收到完整响应；用量以使用记录为准"
+		default:
+			item.Error = "未收到完整的网关响应，请查看网关日志"
+		}
 		_ = s.insertResult(ctx, db, g, cfg.Prompt, "error", "", item.Error, item.DurationMs, 0, 0)
 		return item
 	}
-	defer func() { _ = resp.Body.Close() }()
-
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if resp.StatusCode != http.StatusOK {
-		item.Error = fmt.Sprintf("网关返回 HTTP %d", resp.StatusCode)
+		item.Error = gatewayErrorSummary(resp.StatusCode, raw, g.ReasoningEffort)
 		_ = s.insertResult(ctx, db, g, cfg.Prompt, "error", "", item.Error, item.DurationMs, 0, 0)
 		return item
 	}
@@ -520,10 +534,48 @@ func (s *Service) runOne(ctx context.Context, db *sql.DB, cfg Config, g GroupCon
 	return item
 }
 
+func gatewayErrorSummary(status int, body []byte, effort string) string {
+	fallback := fmt.Sprintf("网关返回 HTTP %d", status)
+	if status != http.StatusBadRequest || !slices.Contains(reasoningEfforts, effort) {
+		return fallback
+	}
+	var reply struct {
+		Error struct {
+			Param   string `json:"param"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(body, &reply) != nil || (reply.Error.Param != "" && reply.Error.Param != "reasoning.effort" && reply.Error.Param != "reasoning_effort") {
+		return fallback
+	}
+	levels, found := strings.CutPrefix(reply.Error.Message, "Invalid value: '"+effort+"'. Supported values are: ")
+	if !found {
+		return fallback
+	}
+	highest := -1
+	for _, token := range strings.Fields(strings.ReplaceAll(strings.TrimSuffix(levels, "."), ",", " ")) {
+		if token == "and" || token == "or" {
+			continue
+		}
+		level := strings.Trim(token, `"'`)
+		rank := slices.Index(reasoningEfforts, level)
+		if rank < 0 || level == effort {
+			return fallback
+		}
+		highest = max(highest, rank)
+	}
+	if highest < 0 {
+		return fallback
+	}
+	return fmt.Sprintf("%s：本次线路不支持推理强度 %s。可在配置中选择「模型默认」，或改用本次上游列出的最高档 %s。", fallback, effort, reasoningEfforts[highest])
+}
+
 // insertResult logs database failures itself, so error-reporting callers may
 // preserve their original error even when its diagnostic row cannot be saved.
 func (s *Service) insertResult(ctx context.Context, db *sql.DB, g GroupConfig, prompt, status, html, errMsg string, durationMs, in, out int) error {
-	_, err := db.ExecContext(ctx,
+	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	_, err := db.ExecContext(writeCtx,
 		`INSERT INTO pelican_results
 			(group_id, model, reasoning_effort, status, html, error, duration_ms, input_tokens, output_tokens, prompt)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
@@ -675,7 +727,7 @@ func (s *Service) Options(ctx context.Context) (map[string]any, error) {
 	}
 	return map[string]any{
 		"groups": groups, "keys": keys, "default_prompt": DefaultPrompt, "max_prompt_chars": maxPromptChars,
-		"reasoning_efforts": []string{"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"},
+		"reasoning_efforts": reasoningEfforts,
 	}, nil
 }
 

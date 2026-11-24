@@ -184,7 +184,10 @@
           <figcaption class="pelican__frame-meta">
             <span class="pelican__frame-time">{{ formatTime(r.created_at) }}</span>
             <span class="pelican__frame-chip">{{ formatDuration(r.duration_ms) }}</span>
-            <span class="pelican__frame-chip">
+            <span v-if="r.status !== 'ok' && r.input_tokens === 0 && r.output_tokens === 0" class="pelican__frame-chip" :title="t('pelican.usageUnknownHint')">
+              {{ t('pelican.usageUnknown') }}
+            </span>
+            <span v-else class="pelican__frame-chip">
               {{ r.input_tokens }} → {{ r.output_tokens }} tok
             </span>
             <span v-if="r.reasoning_effort" class="pelican__frame-chip">{{ r.reasoning_effort }}</span>
