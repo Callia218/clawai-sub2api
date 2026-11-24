@@ -1,7 +1,7 @@
 /**
  * 鹈鹕测智 API
  *
- * 同一个固定提示词，让每个分组的模型各画一只骑自行车的鹈鹕，
+ * 同一轮使用管理员设置的提示词，默认绘制一只骑自行车的鹈鹕，
  * 把模型返回的 HTML 存下来用沙箱 iframe 渲染，直观对比不同模型的能力。
  */
 
@@ -9,6 +9,7 @@ import { apiClient } from './client'
 
 export interface PelicanResult {
   id: number
+  prompt: string
   group_id: number
   model: string
   reasoning_effort: string
@@ -48,6 +49,7 @@ export interface PelicanGroupConfig {
 
 export interface PelicanConfig {
   enabled: boolean
+  prompt: string
   interval_minutes: number
   max_tokens: number
   keep_per_group: number
@@ -73,6 +75,9 @@ export interface PelicanOptionKey {
 export interface PelicanOptions {
   groups: PelicanOptionGroup[]
   keys: PelicanOptionKey[]
+  default_prompt: string
+  max_prompt_chars: number
+  reasoning_efforts: string[]
 }
 
 export interface PelicanRunItem {

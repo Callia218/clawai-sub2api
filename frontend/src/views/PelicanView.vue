@@ -20,7 +20,8 @@
             v-if="isAdmin"
             type="button"
             class="pelican-btn pelican-btn--primary"
-            :disabled="running"
+            :disabled="running || showConfig"
+            :title="showConfig ? t('pelican.finishEditing') : undefined"
             @click="runNow"
           >
             <Icon name="play" size="sm" />
@@ -65,10 +66,23 @@
           <button type="button" class="pelican-btn" @click="showConfig = false">
             {{ t('common.cancel') }}
           </button>
-          <button type="button" class="pelican-btn pelican-btn--primary" :disabled="saving" @click="save">
+          <button type="button" class="pelican-btn pelican-btn--primary" :disabled="saving || !promptValid" @click="save">
             {{ saving ? t('common.submitting') : t('common.save') }}
           </button>
         </div>
+      </div>
+
+      <div class="pelican__field pelican__prompt-editor">
+        <div class="pelican__config-head">
+          <label for="pelican-prompt-input">{{ t('pelican.promptLabel') }}</label>
+          <button type="button" class="pelican-btn" :disabled="form.prompt === options.default_prompt" @click="form.prompt = options.default_prompt">
+            {{ t('pelican.restorePrompt') }}
+          </button>
+        </div>
+        <textarea id="pelican-prompt-input" v-model="form.prompt" class="pelican__input" rows="4" required
+          :aria-invalid="!promptValid" aria-describedby="pelican-prompt-hint pelican-prompt-count" />
+        <small id="pelican-prompt-hint">{{ t('pelican.promptHint') }}</small>
+        <small id="pelican-prompt-count">{{ t('pelican.promptLength', { count: promptLength, limit: options.max_prompt_chars }) }}</small>
       </div>
 
       <div class="pelican__config-grid">
@@ -104,6 +118,7 @@
           </button>
         </div>
 
+        <p id="pelican-effort-hint" class="pelican__empty-hint">{{ t('pelican.effortHint') }}</p>
         <p v-if="!form.groups.length" class="pelican__empty-hint">{{ t('pelican.noGroupYet') }}</p>
 
         <div v-for="(row, idx) in form.groups" :key="idx" class="pelican__group-row">
@@ -128,11 +143,10 @@
             :placeholder="t('pelican.modelPlaceholder')"
           />
 
-          <select v-model="row.reasoning_effort" class="pelican__input">
+          <select v-model="row.reasoning_effort" class="pelican__input" :aria-label="t('pelican.reasoningEffort')" aria-describedby="pelican-effort-hint">
             <option value="">{{ t('pelican.effortDefault') }}</option>
-            <option value="low">low</option>
-            <option value="medium">medium</option>
-            <option value="high">high</option>
+            <option v-if="row.reasoning_effort && !options.reasoning_efforts.includes(row.reasoning_effort)" :value="row.reasoning_effort">{{ row.reasoning_effort }}</option>
+            <option v-for="effort in options.reasoning_efforts" :key="effort" :value="effort">{{ effort }}</option>
           </select>
 
           <button type="button" class="pelican-btn pelican-btn--danger" @click="form.groups.splice(idx, 1)">
@@ -175,6 +189,10 @@
             </span>
             <span v-if="r.reasoning_effort" class="pelican__frame-chip">{{ r.reasoning_effort }}</span>
           </figcaption>
+          <details v-if="r.prompt" class="pelican__result-prompt">
+            <summary>{{ t(r.prompt === prompt ? 'pelican.resultPrompt' : 'pelican.differentPrompt') }}</summary>
+            <p class="pelican__prompt-text">{{ r.prompt }}</p>
+          </details>
           <template v-if="r.status === 'ok' && r.html">
             <PelicanPreview :html="r.html" :title="`${g.group_name} ${r.created_at}`" />
             <button type="button" class="pelican__expand" @click="expandedResult = { html: r.html, title: `${g.group_name} · ${r.model}` }">
@@ -230,10 +248,11 @@ const expandedResult = ref<{ html: string; title: string } | null>(null)
 const groups = ref<PelicanGroupView[]>([])
 const prompt = ref('')
 const status = ref<PelicanStatus>({ running: false, last_run_at: null, last_report: null })
-const options = ref<PelicanOptions>({ groups: [], keys: [] })
+const options = ref<PelicanOptions>({ groups: [], keys: [], default_prompt: '', max_prompt_chars: 0, reasoning_efforts: [] })
 
 const form = reactive<PelicanConfig>({
   enabled: false,
+  prompt: '',
   interval_minutes: 60,
   max_tokens: 4096,
   keep_per_group: 100,
@@ -241,6 +260,8 @@ const form = reactive<PelicanConfig>({
   groups: [],
 })
 
+const promptLength = computed(() => Array.from(form.prompt.trim()).length)
+const promptValid = computed(() => promptLength.value > 0 && promptLength.value <= options.value.max_prompt_chars)
 const running = computed(() => status.value.running)
 const runItems = computed<PelicanRunItem[]>(() => status.value.last_report?.items ?? [])
 
@@ -319,9 +340,11 @@ async function toggleConfig() {
 }
 
 async function save() {
+  if (!promptValid.value || saving.value) return
   saving.value = true
   try {
-    const saved = await saveConfig({ ...form, groups: form.groups.filter((g) => g.group_id > 0) })
+    const saved = await saveConfig({ ...form, prompt: form.prompt.trim(), groups: form.groups.filter((g) => g.group_id > 0) })
+    prompt.value = saved.prompt
     Object.assign(form, saved)
     form.groups = (saved.groups ?? []).map((g) => ({ ...g, reasoning_effort: g.reasoning_effort ?? '' }))
     showConfig.value = false
@@ -475,7 +498,13 @@ onBeforeUnmount(() => {
   font-size: 12.5px;
   line-height: 1.6;
   word-break: break-word;
+  white-space: pre-wrap;
 }
+
+.pelican__prompt-editor { margin-top: 16px; }
+.pelican__prompt-editor textarea { resize: vertical; line-height: 1.6; }
+.pelican__result-prompt { font-size: 12px; color: var(--ui-text-muted, #64748b); }
+.pelican__result-prompt summary { cursor: pointer; }
 
 .pelican__facts {
   display: flex;

@@ -215,8 +215,8 @@ func normalizeMaxReasoningEffortOverLimitForPlatform(platform, raw string) (stri
 	return value, nil
 }
 
-func reasoningEffortRank(raw string) (int, bool) {
-	switch NormalizeMaxReasoningEffort(raw) {
+func reasoningEffortRank(canonical string) (int, bool) {
+	switch canonical {
 	case "minimal":
 		return 1, true
 	case "low":
@@ -229,6 +229,8 @@ func reasoningEffortRank(raw string) (int, bool) {
 		return 5, true
 	case "max":
 		return 6, true
+	case "ultra":
+		return 7, true
 	default:
 		return 0, false
 	}
@@ -521,12 +523,12 @@ func sanitizeGroupReasoningEffortPolicy(group *Group) {
 // so upstream defaults stay in control. It understands both OpenAI and
 // Anthropic request field shapes.
 func ApplyReasoningEffortPolicy(body []byte, maxEffort string, mappings []ReasoningEffortMapping, overLimit string) ([]byte, bool, error) {
-	maxRank, hasMax := reasoningEffortRank(maxEffort)
+	canonicalMax := NormalizeMaxReasoningEffort(maxEffort)
+	maxRank, hasMax := reasoningEffortRank(canonicalMax)
 	if len(body) == 0 || (!hasMax && len(mappings) == 0) {
 		return body, false, nil
 	}
 	deny := hasMax && NormalizeMaxReasoningEffortOverLimit(overLimit) == ReasoningEffortOverLimitDeny
-	canonicalMax := NormalizeMaxReasoningEffort(maxEffort)
 
 	requestModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	result := body
@@ -549,14 +551,16 @@ func ApplyReasoningEffortPolicy(body []byte, maxEffort string, mappings []Reason
 			}
 			return body, false, &ReasoningEffortMappingDeniedError{Requested: requested}
 		}
-		if currentRank, recognized := reasoningEffortRank(effective); recognized {
-			effective = NormalizeMaxReasoningEffort(effective)
-			if hasMax && currentRank > maxRank {
-				if deny {
-					return body, false, &ReasoningEffortOverLimitError{Requested: effective, Max: canonicalMax}
-				}
-				effective = canonicalMax
+		if normalized := NormalizeMaxReasoningEffort(effective); normalized != "" {
+			effective = normalized
+		} else if strings.EqualFold(effective, "ultra") {
+			effective = "ultra"
+		}
+		if currentRank, recognized := reasoningEffortRank(effective); hasMax && recognized && currentRank > maxRank {
+			if deny {
+				return body, false, &ReasoningEffortOverLimitError{Requested: effective, Max: canonicalMax}
 			}
+			effective = canonicalMax
 		}
 		if effective == original {
 			continue

@@ -1,8 +1,8 @@
-// Package pelican 实现「鹈鹕测智」：用固定提示词让各分组的模型画一只骑自行车的鹈鹕，
+// Package pelican 实现「鹈鹕测智」：用同一轮的测评提示词让各分组的模型生成 HTML 或 SVG，
 // 把模型返回的 HTML 存库，前端用 sandbox iframe 渲染，直观比较不同模型的「智商」。
 //
 // 设计要点：
-//   - 提示词写死。改动会让不同时间点的结果失去可比性，这是这个功能的全部意义。
+//   - 每轮开始时读取配置，结果保留当轮使用的提示词。
 //   - 走自家网关（127.0.0.1:<port>/v1/chat/completions）+ 分组绑定的 API Key，
 //     和真实用户同一条链路，结果才有参考价值；代价是会计费，所以默认关闭、由管理员显式开启。
 //   - 只用原生 SQL，不新增 ent schema —— 这个功能是独立的，没必要为它跑一遍 codegen。
@@ -21,17 +21,19 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 
 	_ "github.com/lib/pq"
 )
 
-// DefaultPrompt 固定提示词。
+// DefaultPrompt 是原版题目，也是没有提示词记录的历史结果实际使用的题目。
 const DefaultPrompt = "创建一个HTML,内容是SVG绘制一个鹈鹕骑自行车的2D动画，你不需要任何测试"
 
 const (
 	configRowID      = 1
+	maxPromptChars   = 16384
 	maxResponseBytes = 8 << 20 // 单次响应上限 8MB，防止模型吐出巨量文本把内存打爆
 	maxHTMLBytes     = 2 << 20 // 单条 HTML 入库上限 2MB
 )
@@ -47,6 +49,7 @@ type GroupConfig struct {
 // Config 全局配置，存在 pelican_config 表里。
 type Config struct {
 	Enabled         bool          `json:"enabled"`
+	Prompt          string        `json:"prompt,omitempty"`
 	IntervalMinutes int           `json:"interval_minutes"`
 	MaxTokens       int           `json:"max_tokens"`
 	KeepPerGroup    int           `json:"keep_per_group"`
@@ -58,6 +61,7 @@ type Config struct {
 func DefaultConfig() Config {
 	return Config{
 		Enabled:         false,
+		Prompt:          DefaultPrompt,
 		IntervalMinutes: 60,
 		MaxTokens:       4096,
 		KeepPerGroup:    100,
@@ -67,6 +71,7 @@ func DefaultConfig() Config {
 }
 
 func (c *Config) normalize() {
+	c.Prompt = strings.TrimSpace(c.Prompt)
 	if c.IntervalMinutes < 5 {
 		c.IntervalMinutes = 5
 	}
@@ -103,6 +108,7 @@ func (c *Config) normalize() {
 // Result 一条生成结果。
 type Result struct {
 	ID              int64     `json:"id"`
+	Prompt          string    `json:"prompt"`
 	GroupID         int64     `json:"group_id"`
 	Model           string    `json:"model"`
 	ReasoningEffort string    `json:"reasoning_effort"`
@@ -127,6 +133,11 @@ type GroupView struct {
 	Total         int        `json:"total"`
 	LastCreatedAt *time.Time `json:"last_created_at"`
 	Results       []Result   `json:"results"`
+}
+
+type OverviewData struct {
+	Prompt string      `json:"prompt"`
+	Groups []GroupView `json:"groups"`
 }
 
 // RunItem 单次运行的单个分组结果。
@@ -218,6 +229,7 @@ func ensureSchema(ctx context.Context, db *sql.DB) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_pelican_results_group_created
 			ON pelican_results (group_id, created_at DESC)`,
+		`ALTER TABLE pelican_results ADD COLUMN IF NOT EXISTS prompt TEXT`,
 		`CREATE TABLE IF NOT EXISTS pelican_config (
 			id INTEGER PRIMARY KEY,
 			data JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -253,6 +265,9 @@ func (s *Service) GetConfig(ctx context.Context) (Config, error) {
 		}
 	}
 	cfg.normalize()
+	if cfg.Prompt == "" {
+		cfg.Prompt = DefaultPrompt
+	}
 	return cfg, nil
 }
 
@@ -260,6 +275,9 @@ func (s *Service) GetConfig(ctx context.Context) (Config, error) {
 // 避免「配了 A 分组却用 B 分组的 Key 去测」这种静默错误。
 func (s *Service) SaveConfig(ctx context.Context, cfg Config) (Config, error) {
 	cfg.normalize()
+	if utf8.RuneCountInString(cfg.Prompt) > maxPromptChars {
+		return cfg, fmt.Errorf("提示词不能超过 %d 个字符", maxPromptChars)
+	}
 	db, err := s.database()
 	if err != nil {
 		return cfg, err
@@ -308,10 +326,11 @@ func (s *Service) SaveConfig(ctx context.Context, cfg Config) (Config, error) {
 	if err != nil {
 		return cfg, err
 	}
-	_, err = db.ExecContext(ctx,
+	err = db.QueryRowContext(ctx,
 		`INSERT INTO pelican_config (id, data, updated_at) VALUES ($1, $2, now())
-		 ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
-		configRowID, raw)
+		 ON CONFLICT (id) DO UPDATE SET data = pelican_config.data || EXCLUDED.data, updated_at = now()
+		 RETURNING COALESCE(NULLIF(data->>'prompt', ''), $3::text)`,
+		configRowID, raw, DefaultPrompt).Scan(&cfg.Prompt)
 	if err != nil {
 		return cfg, err
 	}
@@ -408,7 +427,7 @@ func (s *Service) runOne(ctx context.Context, db *sql.DB, cfg Config, g GroupCon
 	if err != nil {
 		item.Error = "读取 API Key 失败"
 		item.DurationMs = int(time.Since(start).Milliseconds())
-		_ = s.insertResult(ctx, db, g, "error", "", item.Error, item.DurationMs, 0, 0)
+		_ = s.insertResult(ctx, db, g, cfg.Prompt, "error", "", item.Error, item.DurationMs, 0, 0)
 		return item
 	}
 
@@ -417,7 +436,7 @@ func (s *Service) runOne(ctx context.Context, db *sql.DB, cfg Config, g GroupCon
 		"max_tokens": cfg.MaxTokens,
 		"stream":     false,
 		"messages": []map[string]string{
-			{"role": "user", "content": DefaultPrompt},
+			{"role": "user", "content": cfg.Prompt},
 		},
 	}
 	if g.ReasoningEffort != "" {
@@ -442,7 +461,7 @@ func (s *Service) runOne(ctx context.Context, db *sql.DB, cfg Config, g GroupCon
 	item.DurationMs = int(time.Since(start).Milliseconds())
 	if err != nil {
 		item.Error = "调用网关失败: " + err.Error()
-		_ = s.insertResult(ctx, db, g, "error", "", item.Error, item.DurationMs, 0, 0)
+		_ = s.insertResult(ctx, db, g, cfg.Prompt, "error", "", item.Error, item.DurationMs, 0, 0)
 		return item
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -450,7 +469,7 @@ func (s *Service) runOne(ctx context.Context, db *sql.DB, cfg Config, g GroupCon
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if resp.StatusCode != http.StatusOK {
 		item.Error = fmt.Sprintf("网关返回 HTTP %d", resp.StatusCode)
-		_ = s.insertResult(ctx, db, g, "error", "", item.Error, item.DurationMs, 0, 0)
+		_ = s.insertResult(ctx, db, g, cfg.Prompt, "error", "", item.Error, item.DurationMs, 0, 0)
 		return item
 	}
 
@@ -470,12 +489,12 @@ func (s *Service) runOne(ctx context.Context, db *sql.DB, cfg Config, g GroupCon
 	}
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		item.Error = "解析网关响应失败"
-		_ = s.insertResult(ctx, db, g, "error", "", item.Error, item.DurationMs, 0, 0)
+		_ = s.insertResult(ctx, db, g, cfg.Prompt, "error", "", item.Error, item.DurationMs, 0, 0)
 		return item
 	}
 	if parsed.Error != nil && parsed.Error.Message != "" {
 		item.Error = "网关返回错误，请在管理员日志中排查"
-		_ = s.insertResult(ctx, db, g, "error", "", item.Error, item.DurationMs, 0, 0)
+		_ = s.insertResult(ctx, db, g, cfg.Prompt, "error", "", item.Error, item.DurationMs, 0, 0)
 		return item
 	}
 	content := ""
@@ -485,14 +504,14 @@ func (s *Service) runOne(ctx context.Context, db *sql.DB, cfg Config, g GroupCon
 	html := extractHTML(content)
 	if html == "" {
 		item.Error = "模型没有返回可渲染的 HTML"
-		_ = s.insertResult(ctx, db, g, "error", "", item.Error, item.DurationMs,
+		_ = s.insertResult(ctx, db, g, cfg.Prompt, "error", "", item.Error, item.DurationMs,
 			parsed.Usage.PromptTokens, parsed.Usage.CompletionTokens)
 		return item
 	}
 	if len(html) > maxHTMLBytes {
 		html = html[:maxHTMLBytes]
 	}
-	if err := s.insertResult(ctx, db, g, "ok", html, "", item.DurationMs,
+	if err := s.insertResult(ctx, db, g, cfg.Prompt, "ok", html, "", item.DurationMs,
 		parsed.Usage.PromptTokens, parsed.Usage.CompletionTokens); err != nil {
 		item.Error = "入库失败: " + err.Error()
 		return item
@@ -503,12 +522,12 @@ func (s *Service) runOne(ctx context.Context, db *sql.DB, cfg Config, g GroupCon
 
 // insertResult logs database failures itself, so error-reporting callers may
 // preserve their original error even when its diagnostic row cannot be saved.
-func (s *Service) insertResult(ctx context.Context, db *sql.DB, g GroupConfig, status, html, errMsg string, durationMs, in, out int) error {
+func (s *Service) insertResult(ctx context.Context, db *sql.DB, g GroupConfig, prompt, status, html, errMsg string, durationMs, in, out int) error {
 	_, err := db.ExecContext(ctx,
 		`INSERT INTO pelican_results
-			(group_id, model, reasoning_effort, status, html, error, duration_ms, input_tokens, output_tokens)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		g.GroupID, g.Model, g.ReasoningEffort, status, html, errMsg, durationMs, in, out)
+			(group_id, model, reasoning_effort, status, html, error, duration_ms, input_tokens, output_tokens, prompt)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		g.GroupID, g.Model, g.ReasoningEffort, status, html, errMsg, durationMs, in, out, prompt)
 	if err != nil {
 		log.Printf("[pelican] 写入结果失败 group=%d model=%s: %v", g.GroupID, g.Model, err)
 	}
@@ -534,7 +553,7 @@ func (s *Service) cleanup(ctx context.Context, db *sql.DB, cfg Config) {
 }
 
 // Overview 返回按分组聚合的展示数据。
-func (s *Service) Overview(ctx context.Context, perGroup int) ([]GroupView, error) {
+func (s *Service) Overview(ctx context.Context, perGroup int) (*OverviewData, error) {
 	cfg, err := s.GetConfig(ctx)
 	if err != nil {
 		return nil, err
@@ -575,14 +594,14 @@ func (s *Service) Overview(ctx context.Context, perGroup int) ([]GroupView, erro
 
 		rows, err := db.QueryContext(ctx,
 			`SELECT id, group_id, model, reasoning_effort, status, html, error,
-			        duration_ms, input_tokens, output_tokens, created_at
+			        duration_ms, input_tokens, output_tokens, created_at, COALESCE(prompt, $3::text)
 			 FROM pelican_results WHERE group_id = $1 ORDER BY id DESC LIMIT $2`,
-			g.GroupID, perGroup)
+			g.GroupID, perGroup, DefaultPrompt)
 		if err == nil {
 			for rows.Next() {
 				var r Result
 				if err := rows.Scan(&r.ID, &r.GroupID, &r.Model, &r.ReasoningEffort, &r.Status,
-					&r.HTML, &r.Error, &r.DurationMs, &r.InputTokens, &r.OutputTokens, &r.CreatedAt); err == nil {
+					&r.HTML, &r.Error, &r.DurationMs, &r.InputTokens, &r.OutputTokens, &r.CreatedAt, &r.Prompt); err == nil {
 					v.Results = append(v.Results, r)
 				}
 			}
@@ -590,7 +609,7 @@ func (s *Service) Overview(ctx context.Context, perGroup int) ([]GroupView, erro
 		}
 		views = append(views, v)
 	}
-	return views, nil
+	return &OverviewData{Prompt: cfg.Prompt, Groups: views}, nil
 }
 
 // Options 配置界面用的候选分组与 API Key。
@@ -654,7 +673,10 @@ func (s *Service) Options(ctx context.Context) (map[string]any, error) {
 		}
 		_ = rows.Close()
 	}
-	return map[string]any{"groups": groups, "keys": keys}, nil
+	return map[string]any{
+		"groups": groups, "keys": keys, "default_prompt": DefaultPrompt, "max_prompt_chars": maxPromptChars,
+		"reasoning_efforts": []string{"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"},
+	}, nil
 }
 
 // Status 供页面显示「上次运行 / 是否在跑」。

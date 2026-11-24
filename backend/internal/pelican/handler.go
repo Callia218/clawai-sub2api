@@ -3,6 +3,7 @@ package pelican
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -29,15 +30,15 @@ func (h *Handler) Overview(c *gin.Context) {
 			perGroup = n
 		}
 	}
-	views, err := h.svc.Overview(c.Request.Context(), perGroup)
+	overview, err := h.svc.Overview(c.Request.Context(), perGroup)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, "Unable to load benchmark results")
 		return
 	}
 	if c.GetString(string(middleware.ContextKeyUserRole)) != service.RoleAdmin {
-		redactPublicOverview(views)
+		redactPublicOverview(overview.Groups)
 	}
-	response.Success(c, gin.H{"groups": views, "prompt": DefaultPrompt})
+	response.Success(c, overview)
 }
 
 // Status GET /pelican/status
@@ -92,12 +93,22 @@ func (h *Handler) GetConfig(c *gin.Context) {
 
 // SaveConfig PUT /pelican/config
 func (h *Handler) SaveConfig(c *gin.Context) {
-	var req Config
+	var req struct {
+		Config
+		Prompt *string `json:"prompt"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, http.StatusBadRequest, "请求体格式错误: "+err.Error())
 		return
 	}
-	cfg, err := h.svc.SaveConfig(c.Request.Context(), req)
+	if req.Prompt != nil {
+		if strings.TrimSpace(*req.Prompt) == "" {
+			response.Error(c, http.StatusBadRequest, "提示词不能为空")
+			return
+		}
+		req.Config.Prompt = *req.Prompt
+	}
+	cfg, err := h.svc.SaveConfig(c.Request.Context(), req.Config)
 	if err != nil {
 		response.Error(c, http.StatusBadRequest, err.Error())
 		return
